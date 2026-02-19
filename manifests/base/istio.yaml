@@ -1,7 +1,7 @@
 apiVersion: networking.istio.io/v1alpha3
 kind: VirtualService
 metadata:
-  name: secrets-web-app
+  name: kubeflow-secrets
   namespace: kubeflow
 spec:
   gateways:
@@ -22,14 +22,14 @@ spec:
       uri: /
     route:
     - destination:
-        host: secrets-web-app.kubeflow.svc.cluster.local
+        host: kubeflow-secrets.kubeflow.svc.cluster.local
         port:
           number: 80
 ---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
 metadata:
-  name: secrets-web-app
+  name: kubeflow-secrets
   namespace: kubeflow
 spec:
   action: ALLOW
@@ -42,4 +42,4 @@ spec:
         - cluster.local/ns/kubeflow/sa/centraldashboard
   selector:
     matchLabels:
-      app: secrets-web-app
+      app: kubeflow-secrets

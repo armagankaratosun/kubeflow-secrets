@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: secrets-web-app
+  name: kubeflow-secrets
   namespace: kubeflow
   labels:
-    app: secrets-web-app
+    app: kubeflow-secrets
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: secrets-web-app
+      app: kubeflow-secrets
   template:
     metadata:
       labels:
-        app: secrets-web-app
+        app: kubeflow-secrets
     spec:
-      serviceAccountName: secrets-web-app
+      serviceAccountName: kubeflow-secrets
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

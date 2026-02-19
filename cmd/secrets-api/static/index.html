@@ -441,6 +441,7 @@
     const nameInput = document.getElementById('nameInput');
     const typeSelect = document.getElementById('typeSelect');
     const stringDataInput = document.getElementById('stringDataInput');
+    const apiBase = window.location.pathname.startsWith('/secrets') ? '/secrets' : '';
 
     function setStatus(text, isError = false) {
       statusRow.textContent = text;
@@ -467,8 +468,13 @@
       return payload;
     }
 
+    function apiURL(path) {
+      if (!path.startsWith('/')) return path;
+      return `${apiBase}${path}`;
+    }
+
     async function loadNamespace() {
-      const payload = await getJSON('/api/namespaces');
+      const payload = await getJSON(apiURL('/api/namespaces'));
       const namespaces = Array.isArray(payload.namespaces) ? payload.namespaces : [];
       if (!namespaces.length) {
         throw new Error('No profile namespace available for this user.');
@@ -530,7 +536,7 @@
       setStatus(`Loading secrets for ${state.namespace}...`);
       setLoading(true);
       try {
-        const payload = await getJSON(`/api/secrets?namespace=${encodeURIComponent(state.namespace)}`);
+        const payload = await getJSON(apiURL(`/api/secrets?namespace=${encodeURIComponent(state.namespace)}`));
         state.secrets = Array.isArray(payload.items) ? payload.items : [];
         renderTable();
         setStatus(`Loaded ${state.secrets.length} secret(s) from ${state.namespace}.`);
@@ -582,7 +588,7 @@
       setStatus(`Creating secret ${name}...`);
       setLoading(true);
       try {
-        await getJSON('/api/secrets', {
+        await getJSON(apiURL('/api/secrets'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

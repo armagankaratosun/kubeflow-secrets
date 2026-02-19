@@ -26,6 +26,17 @@ spec:
         port:
           number: 80
 ---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: kubeflow-secrets
+  namespace: kubeflow
+spec:
+  host: kubeflow-secrets.kubeflow.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+---
 apiVersion: security.istio.io/v1beta1
 kind: AuthorizationPolicy
 metadata:

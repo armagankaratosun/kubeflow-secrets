@@ -82,6 +82,11 @@ var (
 	errMultipleProfile = errors.New("multiple profile namespaces found for user")
 )
 
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
 func main() {
 	addr := envOrDefault("LISTEN_ADDR", ":8080")
 	userHeader := envOrDefault("USER_HEADER", "kubeflow-userid")
@@ -164,8 +169,31 @@ func buildKubeConfig() (*rest.Config, error) {
 func (s *server) withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
-		log.Printf("%s %s from %s in %s", r.Method, r.URL.Path, r.RemoteAddr, time.Since(start).String())
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+
+		// Health probes are too noisy; keep logs focused on user/API traffic.
+		if r.URL.Path == "/healthz" {
+			return
+		}
+
+		user := sanitizeForLog(r.Header.Get(s.userHeader))
+		reqID := firstNonEmpty(
+			r.Header.Get("x-request-id"),
+			r.Header.Get("x-b3-traceid"),
+			r.Header.Get("traceparent"),
+		)
+
+		log.Printf(
+			"request method=%s path=%s status=%d duration=%s remote=%s user=%q request_id=%q",
+			r.Method,
+			r.URL.Path,
+			rec.status,
+			time.Since(start).String(),
+			r.RemoteAddr,
+			user,
+			reqID,
+		)
 	})
 }
 
@@ -189,35 +217,41 @@ func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 
 	user, _, err := s.identityFromRequest(r)
 	if err != nil {
+		log.Printf("namespace resolution failed: identity error: %v", err)
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
 	ns, err := s.resolveUserNamespace(r.Context(), user)
 	if err != nil {
+		log.Printf("namespace resolution failed: user=%q err=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)
 		writeError(w, status, msg)
 		return
 	}
 
+	log.Printf("namespace resolved: user=%q namespace=%q", sanitizeForLog(user), ns)
 	writeJSON(w, http.StatusOK, namespaceResponse{Namespaces: []string{ns}})
 }
 
 func (s *server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 	user, groups, err := s.identityFromRequest(r)
 	if err != nil {
+		log.Printf("secrets request denied: identity error: %v", err)
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
 	impClient, err := s.newImpersonatedClient(user, groups)
 	if err != nil {
+		log.Printf("secrets request failed: user=%q client init error=%v", sanitizeForLog(user), err)
 		writeError(w, http.StatusInternalServerError, "failed to create Kubernetes client")
 		return
 	}
 
 	userNamespace, err := s.resolveUserNamespace(r.Context(), user)
 	if err != nil {
+		log.Printf("secrets request failed: user=%q namespace resolution error=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)
 		writeError(w, status, msg)
 		return
@@ -236,6 +270,7 @@ func (s *server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleSecretsList(w http.ResponseWriter, r *http.Request, impClient kubernetes.Interface, userNamespace string) {
 	ns := userNamespace
 	if requestedNamespace := strings.TrimSpace(r.URL.Query().Get("namespace")); requestedNamespace != "" && requestedNamespace != userNamespace {
+		log.Printf("secrets list denied: requested_namespace=%q allowed_namespace=%q", requestedNamespace, userNamespace)
 		writeError(w, http.StatusForbidden, "cross-namespace access is not allowed")
 		return
 	}
@@ -243,6 +278,7 @@ func (s *server) handleSecretsList(w http.ResponseWriter, r *http.Request, impCl
 	secretList, err := impClient.CoreV1().Secrets(ns).List(r.Context(), metav1.ListOptions{})
 	if err != nil {
 		status, msg := mapKubeError(err, "failed to list secrets")
+		log.Printf("secrets list failed: namespace=%q status=%d err=%v", ns, status, err)
 		writeError(w, status, msg)
 		return
 	}
@@ -282,6 +318,7 @@ func (s *server) handleSecretsCreate(w http.ResponseWriter, r *http.Request, imp
 	}
 	requestedNamespace := strings.TrimSpace(req.Namespace)
 	if requestedNamespace != "" && requestedNamespace != userNamespace {
+		log.Printf("secret create denied: requested_namespace=%q allowed_namespace=%q secret=%q", requestedNamespace, userNamespace, strings.TrimSpace(req.Name))
 		writeError(w, http.StatusForbidden, "cross-namespace access is not allowed")
 		return
 	}
@@ -296,10 +333,12 @@ func (s *server) handleSecretsCreate(w http.ResponseWriter, r *http.Request, imp
 	created, err := impClient.CoreV1().Secrets(secret.Namespace).Create(r.Context(), secret, metav1.CreateOptions{})
 	if err != nil {
 		status, msg := mapKubeError(err, "failed to create secret")
+		log.Printf("secret create failed: namespace=%q name=%q status=%d err=%v", secret.Namespace, secret.Name, status, err)
 		writeError(w, status, msg)
 		return
 	}
 
+	log.Printf("secret created: namespace=%q name=%q type=%q", created.Namespace, created.Name, created.Type)
 	writeJSON(w, http.StatusCreated, createSecretResponse{
 		Name:      created.Name,
 		Namespace: created.Namespace,
@@ -374,7 +413,9 @@ func (s *server) resolveUserNamespace(ctx context.Context, user string) (string,
 		return "", err
 	}
 
+	userCandidates := identityCandidates(user)
 	owned := make([]string, 0, 1)
+	ownerNames := make([]string, 0, len(profiles.Items))
 	for _, p := range profiles.Items {
 		ns := strings.TrimSpace(p.GetName())
 		if ns == "" {
@@ -387,16 +428,19 @@ func (s *server) resolveUserNamespace(ctx context.Context, user string) (string,
 		if !found {
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(ownerName), user) {
+		ownerNames = append(ownerNames, ownerName)
+		if identitiesMatch(userCandidates, identityCandidates(ownerName)) {
 			owned = append(owned, ns)
 		}
 	}
 
 	if len(owned) == 0 {
+		log.Printf("profile match failed: user=%q candidates=%q profile_owners=%q", sanitizeForLog(user), strings.Join(userCandidates, ","), strings.Join(limitStrings(ownerNames, 10), ","))
 		return "", errProfileNotFound
 	}
 	if len(owned) > 1 {
 		sort.Strings(owned)
+		log.Printf("profile match ambiguous: user=%q namespaces=%q", sanitizeForLog(user), strings.Join(owned, ","))
 		return "", fmt.Errorf("%w: %s", errMultipleProfile, strings.Join(owned, ","))
 	}
 	return owned[0], nil
@@ -486,4 +530,76 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func sanitizeForLog(v string) string {
+	return strings.TrimSpace(strings.Trim(v, "\""))
+}
+
+func normalizeIdentity(v string) string {
+	return strings.ToLower(sanitizeForLog(v))
+}
+
+func identityCandidates(v string) []string {
+	n := normalizeIdentity(v)
+	if n == "" {
+		return nil
+	}
+
+	seen := map[string]struct{}{n: {}}
+	candidates := []string{n}
+
+	addSuffix := func(sep string) {
+		if idx := strings.LastIndex(n, sep); idx > -1 && idx+1 < len(n) {
+			sfx := strings.TrimSpace(n[idx+1:])
+			if sfx != "" {
+				if _, ok := seen[sfx]; !ok {
+					seen[sfx] = struct{}{}
+					candidates = append(candidates, sfx)
+				}
+			}
+		}
+	}
+
+	addSuffix(":")
+	addSuffix("|")
+	addSuffix("#")
+	return candidates
+}
+
+func identitiesMatch(a, b []string) bool {
+	if len(a) == 0 || len(b) == 0 {
+		return false
+	}
+	seen := make(map[string]struct{}, len(a))
+	for _, item := range a {
+		seen[item] = struct{}{}
+	}
+	for _, item := range b {
+		if _, ok := seen[item]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func limitStrings(values []string, max int) []string {
+	if len(values) <= max {
+		return values
+	}
+	return append(values[:max], fmt.Sprintf("...+%d more", len(values)-max))
 }

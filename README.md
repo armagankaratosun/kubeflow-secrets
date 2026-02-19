@@ -59,6 +59,14 @@ curl -X POST http://localhost:8080/api/secrets \
 kubectl apply -k manifests/base
 ```
 
+The base Deployment is PodSecurity `restricted` compatible:
+
+- `allowPrivilegeEscalation: false`
+- `capabilities.drop: [\"ALL\"]`
+- `runAsNonRoot: true`
+- `runAsUser/runAsGroup/fsGroup: 65532`
+- `seccompProfile.type: RuntimeDefault`
+
 Then access through Kubeflow gateway path:
 
 - `/secrets/`

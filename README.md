@@ -14,6 +14,10 @@ Small Kubeflow web app + API for creating Kubernetes secrets in user namespaces 
   - `GET /api/namespaces` (returns only the caller's Profile namespace)
   - `GET /api/secrets` (optional `?namespace=` must match caller namespace)
   - `POST /api/secrets`
+  - `GET /api/secrets/{name}`
+  - `PUT /api/secrets/{name}`
+  - `DELETE /api/secrets/{name}`
+- Only returns secrets created/managed by this app (`managed-by=kubeflow-secrets`).
 - Enforces single-namespace behavior from Profile ownership:
   - namespace is derived from `Profile.spec.owner.name == kubeflow-userid`
   - cross-namespace requests are rejected
@@ -32,6 +36,16 @@ Server defaults:
 - `LISTEN_ADDR=:8080`
 - `USER_HEADER=kubeflow-userid`
 - `GROUPS_HEADER=kubeflow-groups`
+
+## Development checks
+
+```bash
+gofmt -w cmd/secrets-api/*.go
+go test ./...
+golangci-lint run --config .golangci.yml
+```
+
+`lint-test` GitHub Actions workflow runs tests and `golangci-lint` on push/PR to `main`.
 
 ## API examples
 

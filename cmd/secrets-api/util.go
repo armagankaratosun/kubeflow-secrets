@@ -13,9 +13,9 @@ func envOrDefault(key, fallback string) string {
 	return fallback
 }
 
-func limitStrings(values []string, max int) []string {
-	if len(values) <= max {
+func limitStrings(values []string, limit int) []string {
+	if len(values) <= limit {
 		return values
 	}
-	return append(values[:max], fmt.Sprintf("...+%d more", len(values)-max))
+	return append(values[:limit], fmt.Sprintf("...+%d more", len(values)-limit))
 }

@@ -1,17 +1,189 @@
+version: "2"
+
 run:
-  timeout: 5m
+  go: "1.24"
+  timeout: 3m
+  tests: true
+  modules-download-mode: mod
 
 linters:
-  disable-all: true
+  default: none
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - containedctx
+    - copyloopvar
+    - decorder
+    - dogsled
+    - dupl
+    - dupword
+    - durationcheck
     - errcheck
-    - gofmt
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - forbidigo
+    - forcetypeassert
+    - ginkgolinter
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - goconst
+    - gocritic
+    - godot
+    - goprintffuncname
+    - gosec
+    - gosmopolitan
     - govet
+    - iface
+    - importas
     - ineffassign
-    - gosimple
+    - intrange
+    - loggercheck
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - nakedret
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nolintlint
+    - nosprintfhostport
+    - perfsprint
+    - prealloc
+    - predeclared
+    - reassign
+    - revive
+    - rowserrcheck
     - staticcheck
+    - tagliatelle
+    - testifylint
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
     - unused
+    - usestdlibvars
+    - usetesting
+    - whitespace
+
+linters-settings:
+  gci:
+    local-prefixes: github.com/armagankaratosun/kubeflow-secrets
+  ginkgolinter:
+    forbid-focus-container: true
+    force-expect-to: true
+  gocritic:
+    disabled-checks:
+      - appendAssign
+      - dupImport
+      - evalOrder
+      - ifElseChain
+      - octalLiteral
+      - regexpSimplify
+      - sloppyReassign
+      - truncateCmp
+      - typeDefFirst
+      - unnamedResult
+      - unnecessaryDefer
+      - whyNoLint
+      - wrapperFunc
+    enabled-tags:
+      - experimental
+  gosec:
+    severity: medium
+    confidence: medium
+    concurrency: 8
+  govet:
+    enable:
+      - shadow
+  importas:
+    no-unaliased: true
+  nolintlint:
+    require-specific: true
+    allow-unused: false
+  tagliatelle:
+    case:
+      rules:
+        json: goCamel
+
+exclusions:
+  generated: lax
+  presets:
+    - comments
+    - common-false-positives
+    - legacy
+    - std-error-handling
+  rules:
+    - linters: [dupl, unused]
+      path: _test\.go
+    - linters: [staticcheck]
+      path: .*(api|types)\/.*\/conversion.*\.go$
+      text: 'SA1019:'
+    - path: _test\.go
+      text: should not use dot imports
+    - path: (test|e2e)/.*.go
+      text: should not use dot imports
+    - linters: [revive]
+      text: 'exported: exported method .*\.(Reconcile|SetupWithManager|SetupWebhookWithManager) should have comment or be unexported'
+    - linters: [revive]
+      text: exported (method|function|type|const) (.+) should have comment or be unexported
+      source: (func|type).*Fake.*
+    - linters: [revive]
+      path: fake_\.go
+      text: exported (method|function|type|const) (.+) should have comment or be unexported
+    - linters: [revive]
+      path: .*(api|types)\/.*\/conversion.*\.go$
+      text: exported (method|function|type|const) (.+) should have comment or be unexported
+    - linters: [revive]
+      path: .*(api|types)\/.*\/conversion.*\.go$
+      text: 'var-naming: don''t use underscores in Go names;'
+    - linters: [revive]
+      path: .*(api|types)\/.*\/conversion.*\.go$
+      text: 'receiver-naming: receiver name'
+    - linters: [staticcheck]
+      path: .*(api|types)\/.*\/conversion.*\.go$
+      text: 'ST1003: should not use underscores in Go names;'
+    - linters: [staticcheck]
+      path: .*(api|types)\/.*\/conversion.*\.go$
+      text: 'ST1016: methods on the same type should have the same receiver name'
+    - linters: [staticcheck]
+      text: 'QF1004: could use strings.ReplaceAll instead'
+    - linters: [staticcheck]
+      text: 'QF1008: could remove embedded field .* from selector'
+    - linters: [staticcheck]
+      text: 'QF1007: could merge conditional assignment into variable declaration'
+    - linters: [forbidigo]
+      path: notes\.go
+      text: use of `fmt.Printf` forbidden by pattern || use of `fmt.Println` forbidden by pattern
+  paths:
+    - zz_generated.*\.go$
+    - .*conversion.*\.go$
+    - mock*
+    - third_party$
+    - builtin$
+    - examples$
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - zz_generated.*\.go$
+      - .*conversion.*\.go$
+      - mock*
+      - third_party$
+      - builtin$
+      - examples$

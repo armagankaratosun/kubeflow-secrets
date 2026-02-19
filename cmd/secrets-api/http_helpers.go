@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -16,8 +17,15 @@ var (
 )
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	//nolint:gosec // Response is JSON and served with application/json content type.
+	_, _ = w.Write(append(body, '\n'))
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -79,4 +87,29 @@ func firstNonEmpty(values ...string) string {
 
 func sanitizeForLog(v string) string {
 	return strings.TrimSpace(strings.Trim(v, "\""))
+}
+
+func logSafef(format string, args ...any) {
+	sanitizedArgs := make([]any, 0, len(args))
+	for _, arg := range args {
+		sanitizedArgs = append(sanitizedArgs, sanitizeLogArg(arg))
+	}
+
+	//nolint:gosec // Inputs are normalized to avoid log forging (line breaks removed).
+	log.Printf(format, sanitizedArgs...)
+}
+
+func sanitizeLogArg(arg any) any {
+	switch value := arg.(type) {
+	case string:
+		return sanitizeSingleLine(value)
+	case error:
+		return sanitizeSingleLine(value.Error())
+	default:
+		return arg
+	}
+}
+
+func sanitizeSingleLine(v string) string {
+	return strings.NewReplacer("\n", "\\n", "\r", "\\r").Replace(v)
 }

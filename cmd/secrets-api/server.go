@@ -14,6 +14,7 @@ const (
 	managedByLabelKey   = "managed-by"
 	managedByLabelValue = "kubeflow-secrets"
 	secretsPathPrefix   = "/api/secrets/"
+	maxPayloadBytes     = 1 << 20
 )
 
 var (
@@ -57,6 +58,6 @@ func newServer(cfg *rest.Config, userHeader, groupsHeader string) (*server, erro
 			corev1.SecretTypeServiceAccountToken: {},
 			corev1.SecretTypeBootstrapToken:      {},
 		},
-		maxPayloadSize: 1 << 20,
+		maxPayloadSize: maxPayloadBytes,
 	}, nil
 }

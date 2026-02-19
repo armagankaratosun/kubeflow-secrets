@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -29,7 +28,7 @@ func (s *server) withLogging(next http.Handler) http.Handler {
 			r.Header.Get("traceparent"),
 		)
 
-		log.Printf(
+		logSafef(
 			"request method=%s path=%s status=%d duration=%s remote=%s user=%q request_id=%q",
 			r.Method,
 			r.URL.Path,
@@ -62,20 +61,20 @@ func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 
 	user, _, err := s.identityFromRequest(r)
 	if err != nil {
-		log.Printf("namespace resolution failed: identity error: %v", err)
+		logSafef("namespace resolution failed: identity error: %v", err)
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
 	ns, err := s.resolveUserNamespace(r.Context(), user)
 	if err != nil {
-		log.Printf("namespace resolution failed: user=%q err=%v", sanitizeForLog(user), err)
+		logSafef("namespace resolution failed: user=%q err=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)
 		writeError(w, status, msg)
 		return
 	}
 
-	log.Printf("namespace resolved: user=%q namespace=%q", sanitizeForLog(user), ns)
+	logSafef("namespace resolved: user=%q namespace=%q", sanitizeForLog(user), ns)
 	writeJSON(w, http.StatusOK, namespaceResponse{Namespaces: []string{ns}})
 }
 
@@ -122,21 +121,21 @@ func (s *server) handleSecretByName(w http.ResponseWriter, r *http.Request) {
 func (s *server) userContext(w http.ResponseWriter, r *http.Request) (string, kubernetes.Interface, bool) {
 	user, groups, err := s.identityFromRequest(r)
 	if err != nil {
-		log.Printf("request denied: identity error: %v", err)
+		logSafef("request denied: identity error: %v", err)
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return "", nil, false
 	}
 
 	impClient, err := s.newImpersonatedClient(user, groups)
 	if err != nil {
-		log.Printf("request failed: user=%q client init error=%v", sanitizeForLog(user), err)
+		logSafef("request failed: user=%q client init error=%v", sanitizeForLog(user), err)
 		writeError(w, http.StatusInternalServerError, "failed to create Kubernetes client")
 		return "", nil, false
 	}
 
 	userNamespace, err := s.resolveUserNamespace(r.Context(), user)
 	if err != nil {
-		log.Printf("request failed: user=%q namespace resolution error=%v", sanitizeForLog(user), err)
+		logSafef("request failed: user=%q namespace resolution error=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)
 		writeError(w, status, msg)
 		return "", nil, false
@@ -148,7 +147,7 @@ func (s *server) userContext(w http.ResponseWriter, r *http.Request) (string, ku
 func (s *server) handleSecretsList(w http.ResponseWriter, r *http.Request, impClient kubernetes.Interface, userNamespace string) {
 	ns := userNamespace
 	if requestedNamespace := strings.TrimSpace(r.URL.Query().Get("namespace")); requestedNamespace != "" && requestedNamespace != userNamespace {
-		log.Printf("secrets list denied: requested_namespace=%q allowed_namespace=%q", requestedNamespace, userNamespace)
+		logSafef("secrets list denied: requested_namespace=%q allowed_namespace=%q", requestedNamespace, userNamespace)
 		writeError(w, http.StatusForbidden, "cross-namespace access is not allowed")
 		return
 	}
@@ -156,7 +155,7 @@ func (s *server) handleSecretsList(w http.ResponseWriter, r *http.Request, impCl
 	secretList, err := impClient.CoreV1().Secrets(ns).List(r.Context(), metav1.ListOptions{LabelSelector: managedLabelSelector()})
 	if err != nil {
 		status, msg := mapKubeError(err, "failed to list secrets")
-		log.Printf("secrets list failed: namespace=%q status=%d err=%v", ns, status, err)
+		logSafef("secrets list failed: namespace=%q status=%d err=%v", ns, status, err)
 		writeError(w, status, msg)
 		return
 	}
@@ -186,7 +185,7 @@ func (s *server) handleSecretCreate(w http.ResponseWriter, r *http.Request, impC
 	}
 
 	if requestedNamespace := strings.TrimSpace(req.Namespace); requestedNamespace != "" && requestedNamespace != userNamespace {
-		log.Printf("secret create denied: requested_namespace=%q allowed_namespace=%q secret=%q", requestedNamespace, userNamespace, strings.TrimSpace(req.Name))
+		logSafef("secret create denied: requested_namespace=%q allowed_namespace=%q secret=%q", requestedNamespace, userNamespace, strings.TrimSpace(req.Name))
 		writeError(w, http.StatusForbidden, "cross-namespace access is not allowed")
 		return
 	}
@@ -203,12 +202,12 @@ func (s *server) handleSecretCreate(w http.ResponseWriter, r *http.Request, impC
 	created, err := impClient.CoreV1().Secrets(secret.Namespace).Create(r.Context(), secret, metav1.CreateOptions{})
 	if err != nil {
 		status, msg := mapKubeError(err, "failed to create secret")
-		log.Printf("secret create failed: namespace=%q name=%q status=%d err=%v", secret.Namespace, secret.Name, status, err)
+		logSafef("secret create failed: namespace=%q name=%q status=%d err=%v", secret.Namespace, secret.Name, status, err)
 		writeError(w, status, msg)
 		return
 	}
 
-	log.Printf("secret created: namespace=%q name=%q type=%q", created.Namespace, created.Name, created.Type)
+	logSafef("secret created: namespace=%q name=%q type=%q", created.Namespace, created.Name, created.Type)
 	writeJSON(w, http.StatusCreated, secretUpsertResponse{
 		Name:      created.Name,
 		Namespace: created.Namespace,
@@ -270,12 +269,12 @@ func (s *server) handleSecretUpdate(w http.ResponseWriter, r *http.Request, impC
 	updated, err := impClient.CoreV1().Secrets(userNamespace).Update(r.Context(), updatedSecret, metav1.UpdateOptions{})
 	if err != nil {
 		status, msg := mapKubeError(err, "failed to update secret")
-		log.Printf("secret update failed: namespace=%q name=%q status=%d err=%v", userNamespace, secretName, status, err)
+		logSafef("secret update failed: namespace=%q name=%q status=%d err=%v", userNamespace, secretName, status, err)
 		writeError(w, status, msg)
 		return
 	}
 
-	log.Printf("secret updated: namespace=%q name=%q type=%q", updated.Namespace, updated.Name, updated.Type)
+	logSafef("secret updated: namespace=%q name=%q type=%q", updated.Namespace, updated.Name, updated.Type)
 	writeJSON(w, http.StatusOK, secretUpsertResponse{
 		Name:      updated.Name,
 		Namespace: updated.Namespace,
@@ -292,12 +291,12 @@ func (s *server) handleSecretDelete(w http.ResponseWriter, r *http.Request, impC
 
 	if err := impClient.CoreV1().Secrets(userNamespace).Delete(r.Context(), secretName, metav1.DeleteOptions{}); err != nil {
 		status, msg := mapKubeError(err, "failed to delete secret")
-		log.Printf("secret delete failed: namespace=%q name=%q status=%d err=%v", userNamespace, secretName, status, err)
+		logSafef("secret delete failed: namespace=%q name=%q status=%d err=%v", userNamespace, secretName, status, err)
 		writeError(w, status, msg)
 		return
 	}
 
-	log.Printf("secret deleted: namespace=%q name=%q", userNamespace, secretName)
+	logSafef("secret deleted: namespace=%q name=%q", userNamespace, secretName)
 	writeJSON(w, http.StatusOK, deleteSecretResponse{
 		Name:      secretName,
 		Namespace: userNamespace,
@@ -306,7 +305,11 @@ func (s *server) handleSecretDelete(w http.ResponseWriter, r *http.Request, impC
 }
 
 func (s *server) readUpsertRequest(r *http.Request) (secretUpsertRequest, error) {
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			logSafef("failed to close request body: %v", err)
+		}
+	}()
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, s.maxPayloadSize))
 	if err != nil {

@@ -1,3 +1,4 @@
+// Package main implements the kubeflow-secrets API server.
 package main
 
 import (
@@ -5,10 +6,13 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"time"
 )
 
 //go:embed static/*
 var staticFS embed.FS
+
+const readHeaderTimeout = 10 * time.Second
 
 func main() {
 	addr := envOrDefault("LISTEN_ADDR", ":8080")
@@ -38,7 +42,13 @@ func main() {
 	routes.Handle("/", http.FileServer(http.FS(staticSub)))
 
 	log.Printf("starting secrets API on %s", addr)
-	if err := http.ListenAndServe(addr, srv.withLogging(routes)); err != nil {
+	httpServer := &http.Server{
+		Addr:              addr,
+		Handler:           srv.withLogging(routes),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+
+	if err := httpServer.ListenAndServe(); err != nil {
 		log.Fatalf("listen and serve: %v", err)
 	}
 }

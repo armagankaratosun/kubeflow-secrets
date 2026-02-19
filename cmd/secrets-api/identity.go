@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
+
+const maxOwnerNamesInLog = 10
 
 func (s *server) resolveUserNamespace(ctx context.Context, user string) (string, error) {
 	profiles, err := s.adminDynamic.Resource(s.profileGVR).List(ctx, metav1.ListOptions{})
@@ -44,13 +45,13 @@ func (s *server) resolveUserNamespace(ctx context.Context, user string) (string,
 	}
 
 	if len(owned) == 0 {
-		log.Printf("profile match failed: user=%q candidates=%q profile_owners=%q", sanitizeForLog(user), strings.Join(userCandidates, ","), strings.Join(limitStrings(ownerNames, 10), ","))
+		logSafef("profile match failed: user=%q candidates=%q profile_owners=%q", sanitizeForLog(user), strings.Join(userCandidates, ","), strings.Join(limitStrings(ownerNames, maxOwnerNamesInLog), ","))
 		return "", errProfileNotFound
 	}
 
 	if len(owned) > 1 {
 		sort.Strings(owned)
-		log.Printf("profile match ambiguous: user=%q namespaces=%q", sanitizeForLog(user), strings.Join(owned, ","))
+		logSafef("profile match ambiguous: user=%q namespaces=%q", sanitizeForLog(user), strings.Join(owned, ","))
 		return "", fmt.Errorf("%w: %s", errMultipleProfile, strings.Join(owned, ","))
 	}
 

@@ -16,10 +16,25 @@ spec:
         app: secrets-web-app
     spec:
       serviceAccountName: secrets-web-app
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: api
         image: ghcr.io/armagankaratosun/kubeflow-secrets:latest
         imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsNonRoot: true
+          runAsUser: 65532
+          runAsGroup: 65532
         ports:
         - containerPort: 8080
           name: http

@@ -10,11 +10,11 @@ COPY cmd ./cmd
 ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-  go build -trimpath -ldflags="-s -w" -o /out/secrets-api ./cmd/secrets-api
+  go build -trimpath -ldflags="-s -w" -o /out/kubeflow-secrets ./cmd/kubeflow-secrets
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
-COPY --from=builder /out/secrets-api /secrets-api
+COPY --from=builder /out/kubeflow-secrets /kubeflow-secrets
 EXPOSE 8080
 USER 65532:65532
-ENTRYPOINT ["/secrets-api"]
+ENTRYPOINT ["/kubeflow-secrets"]

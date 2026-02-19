@@ -28,7 +28,7 @@ Small Kubeflow web app + API for creating Kubernetes secrets in user namespaces 
 
 ```bash
 go mod tidy
-go run ./cmd/secrets-api
+go run ./cmd/kubeflow-secrets
 ```
 
 Server defaults:
@@ -40,7 +40,7 @@ Server defaults:
 ## Development checks
 
 ```bash
-gofmt -w cmd/secrets-api/*.go
+gofmt -w cmd/kubeflow-secrets/*.go
 go test ./...
 golangci-lint run --config .golangci.yml
 ```

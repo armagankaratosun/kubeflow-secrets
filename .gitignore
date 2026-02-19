@@ -7,7 +7,7 @@
 *.dll
 *.so
 *.dylib
-/secrets-api
+/kubeflow-secrets
 
 # Test binary, built with `go test -c`
 *.test

@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secrets-web-app
+  namespace: kubeflow
+  labels:
+    app: secrets-web-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: secrets-web-app
+  template:
+    metadata:
+      labels:
+        app: secrets-web-app
+    spec:
+      serviceAccountName: secrets-web-app
+      containers:
+      - name: api
+        image: ghcr.io/armagankaratosun/kubeflow-secrets:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: LISTEN_ADDR
+          value: ":8080"
+        - name: USER_HEADER
+          value: "kubeflow-userid"
+        - name: GROUPS_HEADER
+          value: "kubeflow-groups"
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi

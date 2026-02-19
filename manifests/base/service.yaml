@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: secrets-web-app
+  namespace: kubeflow
+  labels:
+    app: secrets-web-app
+spec:
+  selector:
+    app: secrets-web-app
+  ports:
+  - name: http
+    port: 80
+    targetPort: http

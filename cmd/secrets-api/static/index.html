@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Secrets</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f5f5f5;
+      --surface: #ffffff;
+      --surface-muted: #fafafa;
+      --text: #212121;
+      --text-muted: #616161;
+      --line: #e0e0e0;
+      --primary: #1976d2;
+      --danger: #d32f2f;
+      --shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+      --radius: 4px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Roboto, "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .page {
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .title {
+      font-size: 34px;
+      font-weight: 400;
+      letter-spacing: 0.2px;
+      margin: 0;
+    }
+
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .namespace-chip {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: var(--radius);
+      padding: 8px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      min-height: 36px;
+      transition: background-color 120ms ease;
+    }
+
+    .btn:hover {
+      background: #f0f4f8;
+    }
+
+    .btn.primary {
+      color: var(--primary);
+      border-color: #c5dbf3;
+      background: #f7fbff;
+    }
+
+    .btn.primary:hover {
+      background: #ebf4fe;
+    }
+
+    .btn.create {
+      color: #fff;
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .btn.create:hover {
+      background: #1565c0;
+    }
+
+    .btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface-muted);
+      color: var(--text-muted);
+    }
+
+    .filter-label {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    .filter-input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      font-size: 14px;
+      color: var(--text);
+    }
+
+    .status-row {
+      min-height: 24px;
+      padding: 8px 16px 0;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .status-row.error {
+      color: var(--danger);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      text-align: left;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--surface);
+    }
+
+    tbody td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    tbody tr:hover {
+      background: #fafcff;
+    }
+
+    .secret-name {
+      font-weight: 500;
+      color: #1b1b1b;
+      word-break: break-word;
+    }
+
+    .type-pill {
+      display: inline-block;
+      border: 1px solid #d7e6f8;
+      background: #f8fbff;
+      color: #245fa8;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 28px 16px;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(38, 50, 56, 0.42);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 2000;
+    }
+
+    .overlay.open {
+      display: flex;
+    }
+
+    .dialog {
+      width: 100%;
+      max-width: 640px;
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--line);
+    }
+
+    .dialog-head {
+      padding: 18px 20px 8px;
+    }
+
+    .dialog-title {
+      margin: 0;
+      font-size: 31px;
+      font-weight: 400;
+    }
+
+    .dialog-subtitle {
+      margin: 6px 0 0;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .dialog-body {
+      padding: 12px 20px 0;
+    }
+
+    .field-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .field {
+      margin-bottom: 10px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      border: 1px solid #c7c7c7;
+      border-radius: var(--radius);
+      min-height: 40px;
+      padding: 9px 10px;
+      font: inherit;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus,
+    .filter-input:focus {
+      outline: 2px solid #cfe1f6;
+      outline-offset: 0;
+      border-color: var(--primary);
+    }
+
+    .field textarea {
+      min-height: 145px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+    }
+
+    .helper {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .dialog-footer {
+      padding: 14px 20px 18px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .modal-error {
+      min-height: 18px;
+      padding: 0 20px;
+      color: var(--danger);
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .title {
+        font-size: 30px;
+      }
+      .field-row {
+        grid-template-columns: 1fr;
+      }
+      .toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .toolbar-right {
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .page {
+        padding: 10px;
+      }
+      .toolbar-right {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      thead th:nth-child(2),
+      tbody td:nth-child(2) {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="toolbar">
+      <h1 class="title">Secrets</h1>
+      <div class="toolbar-right">
+        <span class="namespace-chip" id="namespaceChip">Namespace: -</span>
+        <button type="button" class="btn" id="refreshSecrets">Refresh</button>
+        <button type="button" class="btn primary" id="openModal">+ New Secret</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="filter-row">
+        <span class="filter-label">Filter</span>
+        <input id="filterInput" class="filter-input" type="text" placeholder="Enter name or type">
+      </div>
+      <div id="statusRow" class="status-row"></div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Created at</th>
+          </tr>
+        </thead>
+        <tbody id="secretsRows"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <div class="overlay" id="modalOverlay" aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+      <div class="dialog-head">
+        <h2 id="dialogTitle" class="dialog-title">New Secret</h2>
+        <p class="dialog-subtitle">Create a secret in your Kubeflow profile namespace.</p>
+      </div>
+      <div class="dialog-body">
+        <div class="field-row">
+          <div class="field">
+            <label for="nameInput">Name *</label>
+            <input id="nameInput" type="text" placeholder="my-secret" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="namespaceInput">Namespace</label>
+            <input id="namespaceInput" type="text" disabled>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="typeSelect">Secret Type *</label>
+          <select id="typeSelect">
+            <option value="Opaque">Opaque</option>
+            <option value="kubernetes.io/dockerconfigjson">kubernetes.io/dockerconfigjson</option>
+          </select>
+          <div class="helper">Only safe types are allowed.</div>
+        </div>
+
+        <div class="field">
+          <label for="stringDataInput">String Data (JSON object) *</label>
+          <textarea id="stringDataInput" spellcheck="false">{
+  "username": "example",
+  "password": "secret"
+}</textarea>
+          <div class="helper">For docker config use key <code>.dockerconfigjson</code>.</div>
+        </div>
+      </div>
+      <div id="modalError" class="modal-error"></div>
+      <div class="dialog-footer">
+        <button type="button" class="btn create" id="createSecret">Create</button>
+        <button type="button" class="btn" id="closeModal">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      namespace: '',
+      secrets: [],
+      filter: '',
+      loading: false,
+    };
+
+    const nsChip = document.getElementById('namespaceChip');
+    const nsInput = document.getElementById('namespaceInput');
+    const statusRow = document.getElementById('statusRow');
+    const rows = document.getElementById('secretsRows');
+    const filterInput = document.getElementById('filterInput');
+
+    const modalOverlay = document.getElementById('modalOverlay');
+    const openModalBtn = document.getElementById('openModal');
+    const closeModalBtn = document.getElementById('closeModal');
+    const createBtn = document.getElementById('createSecret');
+    const modalError = document.getElementById('modalError');
+
+    const nameInput = document.getElementById('nameInput');
+    const typeSelect = document.getElementById('typeSelect');
+    const stringDataInput = document.getElementById('stringDataInput');
+
+    function setStatus(text, isError = false) {
+      statusRow.textContent = text;
+      statusRow.className = isError ? 'status-row error' : 'status-row';
+    }
+
+    function setModalError(text) {
+      modalError.textContent = text || '';
+    }
+
+    function setLoading(loading) {
+      state.loading = loading;
+      createBtn.disabled = loading;
+      openModalBtn.disabled = loading;
+      document.getElementById('refreshSecrets').disabled = loading;
+    }
+
+    async function getJSON(url, options = {}) {
+      const response = await fetch(url, options);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || `HTTP ${response.status}`);
+      }
+      return payload;
+    }
+
+    async function loadNamespace() {
+      const payload = await getJSON('/api/namespaces');
+      const namespaces = Array.isArray(payload.namespaces) ? payload.namespaces : [];
+      if (!namespaces.length) {
+        throw new Error('No profile namespace available for this user.');
+      }
+      state.namespace = namespaces[0];
+      nsChip.textContent = `Namespace: ${state.namespace}`;
+      nsInput.value = state.namespace;
+    }
+
+    function filteredSecrets() {
+      const q = state.filter.trim().toLowerCase();
+      if (!q) return state.secrets;
+      return state.secrets.filter((item) => {
+        return item.name.toLowerCase().includes(q) || item.type.toLowerCase().includes(q);
+      });
+    }
+
+    function renderTable() {
+      rows.innerHTML = '';
+      const list = filteredSecrets();
+
+      if (!list.length) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 3;
+        td.className = 'empty';
+        td.textContent = state.secrets.length ? 'No secrets match the current filter.' : 'No secrets found.';
+        tr.appendChild(td);
+        rows.appendChild(tr);
+        return;
+      }
+
+      for (const item of list) {
+        const tr = document.createElement('tr');
+
+        const nameTd = document.createElement('td');
+        nameTd.className = 'secret-name';
+        nameTd.textContent = item.name;
+
+        const typeTd = document.createElement('td');
+        const typePill = document.createElement('span');
+        typePill.className = 'type-pill';
+        typePill.textContent = item.type;
+        typeTd.appendChild(typePill);
+
+        const createdTd = document.createElement('td');
+        const date = new Date(item.creationTimestamp);
+        createdTd.textContent = Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+
+        tr.appendChild(nameTd);
+        tr.appendChild(typeTd);
+        tr.appendChild(createdTd);
+        rows.appendChild(tr);
+      }
+    }
+
+    async function loadSecrets() {
+      if (!state.namespace) return;
+      setStatus(`Loading secrets for ${state.namespace}...`);
+      setLoading(true);
+      try {
+        const payload = await getJSON(`/api/secrets?namespace=${encodeURIComponent(state.namespace)}`);
+        state.secrets = Array.isArray(payload.items) ? payload.items : [];
+        renderTable();
+        setStatus(`Loaded ${state.secrets.length} secret(s) from ${state.namespace}.`);
+      } catch (error) {
+        state.secrets = [];
+        renderTable();
+        setStatus(`Failed to load secrets: ${error.message}`, true);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function openModal() {
+      if (!state.namespace) {
+        setStatus('No namespace resolved for current user.', true);
+        return;
+      }
+      setModalError('');
+      nameInput.value = '';
+      typeSelect.value = 'Opaque';
+      modalOverlay.classList.add('open');
+      modalOverlay.setAttribute('aria-hidden', 'false');
+      setTimeout(() => nameInput.focus(), 20);
+    }
+
+    function closeModal() {
+      modalOverlay.classList.remove('open');
+      modalOverlay.setAttribute('aria-hidden', 'true');
+    }
+
+    async function createSecret() {
+      const name = nameInput.value.trim();
+      const type = typeSelect.value;
+      let stringData;
+
+      if (!name) {
+        setModalError('Name is required.');
+        return;
+      }
+
+      try {
+        stringData = JSON.parse(stringDataInput.value);
+      } catch {
+        setModalError('String Data must be valid JSON.');
+        return;
+      }
+
+      setModalError('');
+      setStatus(`Creating secret ${name}...`);
+      setLoading(true);
+      try {
+        await getJSON('/api/secrets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            namespace: state.namespace,
+            name,
+            type,
+            stringData,
+          }),
+        });
+        closeModal();
+        setStatus(`Secret ${name} created in ${state.namespace}.`);
+        await loadSecrets();
+      } catch (error) {
+        setModalError(error.message);
+        setStatus(`Failed to create secret: ${error.message}`, true);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    filterInput.addEventListener('input', (event) => {
+      state.filter = event.target.value;
+      renderTable();
+    });
+
+    document.getElementById('refreshSecrets').addEventListener('click', loadSecrets);
+    openModalBtn.addEventListener('click', openModal);
+    closeModalBtn.addEventListener('click', closeModal);
+    createBtn.addEventListener('click', createSecret);
+
+    modalOverlay.addEventListener('click', (event) => {
+      if (event.target === modalOverlay) closeModal();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && modalOverlay.classList.contains('open')) {
+        closeModal();
+      }
+    });
+
+    async function bootstrap() {
+      setStatus('Resolving profile namespace...');
+      try {
+        await loadNamespace();
+        await loadSecrets();
+      } catch (error) {
+        setStatus(error.message, true);
+      }
+    }
+
+    bootstrap();
+  </script>
+</body>
+</html>

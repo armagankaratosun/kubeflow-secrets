@@ -1,0 +1,9 @@
+.git
+.github
+*.md
+/tmp
+*.log
+bin/
+secrets-api
+manifests/
+LICENSE

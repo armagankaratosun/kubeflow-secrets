@@ -8,6 +8,8 @@
 *.so
 *.dylib
 /kubeflow-secrets
+frontend/node_modules/
+cmd/kubeflow-secrets/static/app.js
 
 # Test binary, built with `go test -c`
 *.test

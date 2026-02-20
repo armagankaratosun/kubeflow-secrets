@@ -1,0 +1,15 @@
+{
+  "name": "kubeflow-secrets-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=../cmd/kubeflow-secrets/static/app.js",
+    "check": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.10",
+    "typescript": "^5.9.2"
+  }
+}

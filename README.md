@@ -28,8 +28,12 @@ Small Kubeflow web app + API for creating Kubernetes secrets in user namespaces 
 
 ```bash
 go mod tidy
+npm ci --prefix frontend
+npm run build --prefix frontend
 go run ./cmd/kubeflow-secrets
 ```
+
+The frontend build emits `cmd/kubeflow-secrets/static/app.js`.
 
 Server defaults:
 
@@ -40,12 +44,14 @@ Server defaults:
 ## Development checks
 
 ```bash
+npm ci --prefix frontend
+npm run check --prefix frontend
 gofmt -w cmd/kubeflow-secrets/*.go
 go test ./...
 golangci-lint run --config .golangci.yml
 ```
 
-`lint-test` GitHub Actions workflow runs tests and `golangci-lint` on push/PR to `main`.
+`lint-test` workflow runs frontend typecheck/build, Go tests, and `golangci-lint` on push/PR to `main`.
 
 ## API examples
 

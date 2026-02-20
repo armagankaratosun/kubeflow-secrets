@@ -4,6 +4,7 @@
 /tmp
 *.log
 bin/
-secrets-api
+kubeflow-secrets
 manifests/
 LICENSE
+frontend/

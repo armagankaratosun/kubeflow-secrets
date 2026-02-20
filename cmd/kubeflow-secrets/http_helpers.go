@@ -95,7 +95,6 @@ func logSafef(format string, args ...any) {
 		sanitizedArgs = append(sanitizedArgs, sanitizeLogArg(arg))
 	}
 
-	//nolint:gosec // Inputs are normalized to avoid log forging (line breaks removed).
 	log.Printf(format, sanitizedArgs...)
 }
 

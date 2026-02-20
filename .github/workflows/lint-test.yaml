@@ -21,6 +21,19 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Build frontend assets
+        run: npm run check --prefix frontend
+
       - name: Run tests
         run: go test ./...
 

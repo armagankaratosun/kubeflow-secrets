@@ -1,6 +1,19 @@
-# kubeflow-secrets
+# Kubeflow Secrets
 
 Small Kubeflow web app + API for creating Kubernetes secrets in user namespaces via Kubernetes impersonation.
+
+## UI Attribution
+
+The frontend visuals are intentionally aligned with Kubeflow Central Dashboard and CRUD web apps.
+For that, this project includes adapted UI structure/styles based on Kubeflow source code:
+
+- `kubeflow/dashboard`:
+  - `components/centraldashboard-angular/frontend`
+- `kubeflow/kubeflow` (pinned commit `4a26c7b5e9575410613faf7df6735aa1883a2d24`):
+  - `components/crud-web-apps/common/frontend/kubeflow-common-lib`
+  - `components/crud-web-apps/volumes/frontend`
+
+Kubeflow is licensed under Apache License 2.0, and this repository preserves Apache-2.0 licensing for adapted files.
 
 ## What it does
 

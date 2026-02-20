@@ -1,240 +1,289 @@
-<main class="page">
-  <section [class.hidden]="view !== 'list'">
-    <section class="toolbar">
-      <h1 class="title">Secrets</h1>
-      <div class="toolbar-right">
-        <span class="namespace-chip">Namespace: {{ namespace || '-' }}</span>
-        <button type="button" class="btn" (click)="refresh()" [disabled]="loading">Refresh</button>
-        <button type="button" class="btn primary" (click)="openCreateDialog()" [disabled]="loading">
-          + New Secret
-        </button>
+<!--
+Copyright 2026 The Kubeflow Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Adapted from Kubeflow UI sources:
+- kubeflow/kubeflow@4a26c7b5e9575410613faf7df6735aa1883a2d24
+  components/crud-web-apps/volumes/frontend
+- kubeflow/kubeflow@4a26c7b5e9575410613faf7df6735aa1883a2d24
+  components/crud-web-apps/common/frontend/kubeflow-common-lib
+-->
+<main class="lib-content-wrapper">
+  @if (view === 'list') {
+    <section class="toolbar-shell">
+      <div class="flex">
+        <div class="page-padding-left"></div>
+        <div class="mat-headline title-margin">Secrets</div>
+        <div class="margin-content"></div>
+        <div class="toolbar-buttons">
+          <button mat-button class="toolbar-button" (click)="refresh()" [disabled]="loading">
+            Refresh
+          </button>
+          <button
+            mat-stroked-button
+            class="toolbar-button create-button"
+            (click)="openCreateDialog()"
+            [disabled]="loading"
+          >
+            <mat-icon class="button-icon">add</mat-icon>
+            New Secret
+          </button>
+        </div>
       </div>
+      <mat-divider class="page-placement margin-top"></mat-divider>
     </section>
 
-    <section class="card">
-      <div class="filter-row">
-        <span class="filter-label">Filter</span>
-        <select
-          class="filter-select"
-          [(ngModel)]="filterField"
-          [disabled]="loading"
-          aria-label="Filter field"
-        >
-          @for (option of filterFieldOptions; track option.value) {
-            <option [value]="option.value">{{ option.label }}</option>
-          }
-        </select>
-        <input
-          class="filter-input"
-          type="text"
-          placeholder="Enter property value"
-          [(ngModel)]="filterValue"
-          [disabled]="loading"
-          (keydown.enter)="applyFilter(); $event.preventDefault()"
-        />
-        <button type="button" class="btn" (click)="applyFilter()" [disabled]="loading">
-          Apply
-        </button>
-        <button
-          type="button"
-          class="btn"
-          (click)="clearFilters()"
-          [disabled]="loading || !hasActiveFilters"
-        >
-          Clear
-        </button>
-      </div>
-
-      <div class="chips">
-        @for (filter of filters; track trackFilter($index, filter)) {
-          <span class="chip">
-            <span>{{ fieldLabel(filter.field) }}: {{ filter.value }}</span>
-            <button
-              type="button"
-              class="chip-remove"
-              [attr.aria-label]="'Remove ' + fieldLabel(filter.field) + ' filter'"
-              (click)="removeFilter(filter.id)"
-            >
-              x
-            </button>
-          </span>
-        }
-      </div>
-
-      <div class="status-row" [class.error]="statusError">{{ statusMessage }}</div>
-
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Created at</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          @if (filteredSecrets.length === 0) {
-            <tr>
-              <td class="empty" colspan="4">
-                {{
-                  secrets.length
-                    ? 'No managed secrets match the current filters.'
-                    : 'No managed secrets found. Create one with + New Secret.'
-                }}
-              </td>
-            </tr>
-          } @else {
-            @for (secret of filteredSecrets; track trackSecret($index, secret)) {
-              <tr>
-                <td>
-                  <button type="button" class="name-link" (click)="openSecretDetails(secret.name)">
-                    {{ secret.name }}
-                  </button>
-                </td>
-                <td>
-                  <span class="type-pill">{{ secret.type }}</span>
-                </td>
-                <td>{{ formatDate(secret.creationTimestamp) }}</td>
-                <td>
-                  <div class="actions">
-                    <button type="button" class="action-btn" (click)="openEditDialog(secret.name)">
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      class="action-btn danger"
-                      (click)="openDeleteDialog(secret.name)"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
+    <section class="page-padding lib-flex-grow lib-overflow-auto">
+      <section class="list-card lib-table">
+        <div class="filter-row">
+          <mat-icon class="filter-icon">filter_list</mat-icon>
+          <span class="filter-header">Filter</span>
+          <select
+            class="filter-select"
+            [(ngModel)]="filterField"
+            [disabled]="loading"
+            aria-label="Filter field"
+          >
+            @for (option of filterFieldOptions; track option.value) {
+              <option [value]="option.value">{{ option.label }}</option>
             }
+          </select>
+          <input
+            id="filterInput"
+            class="filter-input"
+            type="text"
+            placeholder="Enter property name or value"
+            [(ngModel)]="filterValue"
+            [disabled]="loading"
+            (keydown.enter)="applyFilter(); $event.preventDefault()"
+          />
+          <button
+            mat-icon-button
+            aria-label="Apply filter"
+            (click)="applyFilter()"
+            [disabled]="loading"
+          >
+            <mat-icon>check</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            aria-label="Clear filters"
+            (click)="clearFilters()"
+            [disabled]="loading || !hasActiveFilters"
+          >
+            <mat-icon>close</mat-icon>
+          </button>
+        </div>
+
+        <div class="chips-row">
+          @for (filter of filters; track trackFilter($index, filter)) {
+            <span class="filter-chip">
+              {{ fieldLabel(filter.field) }}: {{ filter.value }}
+              <button
+                type="button"
+                class="chip-remove"
+                [attr.aria-label]="'Remove ' + fieldLabel(filter.field) + ' filter'"
+                (click)="removeFilter(filter.id)"
+              >
+                <mat-icon>cancel</mat-icon>
+              </button>
+            </span>
           }
-        </tbody>
-      </table>
-    </section>
-  </section>
+        </div>
 
-  <section [class.hidden]="view !== 'detail'">
-    <section class="details-head">
-      <div>
-        <button type="button" class="btn back" (click)="backToList()">Back</button>
-        <h1 class="title small">Secret details</h1>
-        <h2 class="resource-title">{{ detailName }}</h2>
-      </div>
-      <div class="toolbar-right">
-        <button
-          type="button"
-          class="btn"
-          (click)="openEditDialog(activeSecret)"
-          [disabled]="loading || !activeSecret"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          class="btn danger"
-          (click)="openDeleteDialog(activeSecret)"
-          [disabled]="loading || !activeSecret"
-        >
-          Delete
-        </button>
-      </div>
-    </section>
+        <div class="status-row" [class.error]="statusError">{{ statusMessage }}</div>
 
-    <section class="card">
-      <div class="tab-row">
-        <button
-          type="button"
-          class="tab-btn"
-          [class.active]="detailTab === 'overview'"
-          (click)="setActiveTab('overview')"
-        >
-          Overview
-        </button>
-        <button
-          type="button"
-          class="tab-btn"
-          [class.active]="detailTab === 'events'"
-          (click)="setActiveTab('events')"
-        >
-          Events
-        </button>
-        <button
-          type="button"
-          class="tab-btn"
-          [class.active]="detailTab === 'yaml'"
-          (click)="setActiveTab('yaml')"
-        >
-          YAML
-        </button>
-      </div>
-
-      <div class="status-row" [class.error]="detailStatusError">{{ detailStatusMessage }}</div>
-
-      <section [class.hidden]="detailTab !== 'overview'" class="tab-panel">
-        @if (hasOverviewData) {
-          <table class="details-table">
-            <tbody>
-              @for (item of overviewItems; track trackOverview($index, item)) {
-                <tr>
-                  <th>{{ item.label }}</th>
-                  <td>
-                    @if (item.value.includes('\n')) {
-                      <pre class="inline-pre">{{ item.value }}</pre>
-                    } @else {
-                      {{ item.value }}
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        } @else {
-          <div class="empty">No secret details loaded yet.</div>
-        }
-      </section>
-
-      <section [class.hidden]="detailTab !== 'events'" class="tab-panel">
-        <table>
+        <table class="wide">
           <thead>
             <tr>
-              <th>Type</th>
-              <th>Reason</th>
-              <th>Message</th>
-              <th>Source</th>
-              <th>Last seen</th>
-              <th>Count</th>
+              <th class="header-padding">Status</th>
+              <th class="header-padding">Name</th>
+              <th class="header-padding">Type</th>
+              <th class="header-padding">Created at</th>
+              <th class="header-padding right-align">Actions</th>
             </tr>
           </thead>
           <tbody>
-            @if (events.length === 0) {
+            @if (filteredSecrets.length === 0) {
               <tr>
-                <td class="empty" colspan="6">No events found for this secret.</td>
+                <td class="empty" colspan="5">
+                  {{
+                    secrets.length
+                      ? 'No managed secrets match the current filters.'
+                      : 'No managed secrets found. Create one with New Secret.'
+                  }}
+                </td>
               </tr>
             } @else {
-              @for (event of events; track trackEvent($index, event)) {
+              @for (secret of filteredSecrets; track trackSecret($index, secret)) {
                 <tr>
-                  <td>{{ event.type || '-' }}</td>
-                  <td>{{ event.reason || '-' }}</td>
-                  <td>{{ event.message || '-' }}</td>
-                  <td>{{ event.source || '-' }}</td>
-                  <td>{{ formatDate(event.lastSeen) }}</td>
-                  <td>{{ event.count }}</td>
+                  <td>
+                    <mat-icon class="status-ready">check_circle</mat-icon>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="name-link"
+                      (click)="openSecretDetails(secret.name)"
+                      [attr.aria-label]="'Open details for ' + secret.name"
+                    >
+                      {{ secret.name }}
+                    </button>
+                  </td>
+                  <td>{{ secret.type }}</td>
+                  <td>{{ formatDate(secret.creationTimestamp) }}</td>
+                  <td class="right-align">
+                    <div class="action-list">
+                      <button
+                        mat-icon-button
+                        aria-label="Edit secret"
+                        class="action-button"
+                        (click)="openEditDialog(secret.name)"
+                      >
+                        <mat-icon>edit</mat-icon>
+                      </button>
+                      <button
+                        mat-icon-button
+                        aria-label="Delete secret"
+                        class="action-button"
+                        (click)="openDeleteDialog(secret.name)"
+                      >
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               }
             }
           </tbody>
         </table>
       </section>
-
-      <section [class.hidden]="detailTab !== 'yaml'" class="tab-panel">
-        <pre class="yaml-view">{{ yaml || '# Empty YAML output' }}</pre>
-      </section>
     </section>
-  </section>
+  } @else {
+    <section class="toolbar-shell">
+      <div class="flex">
+        <div class="page-padding-left"></div>
+        <button mat-icon-button class="back-button" (click)="backToList()">
+          <mat-icon>arrow_back</mat-icon>
+        </button>
+        <div class="mat-headline title-margin">Secret details</div>
+        <div class="margin-content"></div>
+        <div class="toolbar-buttons">
+          <button
+            mat-button
+            class="toolbar-button"
+            (click)="openEditDialog(activeSecret)"
+            [disabled]="loading || !activeSecret"
+          >
+            Edit
+          </button>
+          <button
+            mat-button
+            class="toolbar-button delete-button"
+            (click)="openDeleteDialog(activeSecret)"
+            [disabled]="loading || !activeSecret"
+          >
+            <mat-icon>delete</mat-icon>
+            Delete
+          </button>
+        </div>
+      </div>
+      <mat-divider class="page-placement margin-top"></mat-divider>
+    </section>
+
+    <section class="details-page-outer">
+      <div class="details-page-inner">
+        <div class="details-page-inner-2">
+          <mat-icon class="status-ready small-padding-right">check_circle</mat-icon>
+          <div class="mat-title">{{ detailName }}</div>
+        </div>
+      </div>
+      <div class="status-row details-status" [class.error]="detailStatusError">
+        {{ detailStatusMessage }}
+      </div>
+      <mat-tab-group
+        dynamicHeight
+        animationDuration="0ms"
+        [selectedIndex]="detailTabIndex"
+        (selectedIndexChange)="onDetailTabIndexChange($event)"
+      >
+        <mat-tab label="OVERVIEW">
+          <ng-template matTabContent>
+            <section class="tab-panel">
+              @if (hasOverviewData) {
+                <table class="details-table">
+                  <tbody>
+                    @for (item of overviewItems; track trackOverview($index, item)) {
+                      <tr>
+                        <th>{{ item.label }}</th>
+                        <td>
+                          @if (item.value.includes('\n')) {
+                            <pre class="inline-pre">{{ item.value }}</pre>
+                          } @else {
+                            {{ item.value }}
+                          }
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              } @else {
+                <div class="empty">No secret details loaded yet.</div>
+              }
+            </section>
+          </ng-template>
+        </mat-tab>
+        <mat-tab label="EVENTS">
+          <ng-template matTabContent>
+            <section class="tab-panel">
+              <table class="wide">
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Reason</th>
+                    <th>Message</th>
+                    <th>Source</th>
+                    <th>Last seen</th>
+                    <th>Count</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @if (events.length === 0) {
+                    <tr>
+                      <td class="empty" colspan="6">No events found for this secret.</td>
+                    </tr>
+                  } @else {
+                    @for (event of events; track trackEvent($index, event)) {
+                      <tr>
+                        <td>{{ event.type || '-' }}</td>
+                        <td>{{ event.reason || '-' }}</td>
+                        <td>{{ event.message || '-' }}</td>
+                        <td>{{ event.source || '-' }}</td>
+                        <td>{{ formatDate(event.lastSeen) }}</td>
+                        <td>{{ event.count }}</td>
+                      </tr>
+                    }
+                  }
+                </tbody>
+              </table>
+            </section>
+          </ng-template>
+        </mat-tab>
+        <mat-tab label="YAML">
+          <ng-template matTabContent>
+            <section class="tab-panel">
+              <pre class="yaml-view">{{ yaml || '# Empty YAML output' }}</pre>
+            </section>
+          </ng-template>
+        </mat-tab>
+      </mat-tab-group>
+    </section>
+  }
 </main>
 
 @if (editorOpen) {

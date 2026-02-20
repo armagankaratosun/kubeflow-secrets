@@ -1,6 +1,10 @@
 import { Component, HostListener, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatIconModule } from '@angular/material/icon';
+import { MatTabsModule } from '@angular/material/tabs';
 
 import { SecretsAPIService } from './secrets-api.service';
 import type {
@@ -27,7 +31,14 @@ interface FilterFieldOption {
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatButtonModule,
+    MatDividerModule,
+    MatIconModule,
+    MatTabsModule,
+  ],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -104,6 +115,19 @@ export class AppComponent implements OnInit {
     return this.activeSecret || '-';
   }
 
+  get detailTabIndex(): number {
+    switch (this.detailTab) {
+      case 'overview':
+        return 0;
+      case 'events':
+        return 1;
+      case 'yaml':
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
   get overviewItems(): OverviewItem[] {
     if (!this.detail) {
       return [];
@@ -146,6 +170,19 @@ export class AppComponent implements OnInit {
 
   setActiveTab(tab: DetailTab): void {
     this.detailTab = tab;
+  }
+
+  onDetailTabIndexChange(index: number): void {
+    switch (index) {
+      case 1:
+        this.setActiveTab('events');
+        return;
+      case 2:
+        this.setActiveTab('yaml');
+        return;
+      default:
+        this.setActiveTab('overview');
+    }
   }
 
   formatDate(value: string): string {

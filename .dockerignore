@@ -7,4 +7,5 @@ bin/
 kubeflow-secrets
 manifests/
 LICENSE
+# Frontend sources are built in CI/CD before container build and emitted to cmd/kubeflow-secrets/static.
 frontend/

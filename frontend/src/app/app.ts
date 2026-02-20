@@ -1,0 +1,557 @@
+import { Component, HostListener, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+
+import { SecretsAPIService } from './secrets-api.service';
+import type {
+  DetailTab,
+  EditorMode,
+  FilterField,
+  PageView,
+  SecretDetail,
+  SecretEvent,
+  SecretFilter,
+  SecretListItem,
+  SecretUpsertRequest,
+} from './models';
+
+interface OverviewItem {
+  label: string;
+  value: string;
+}
+
+interface FilterFieldOption {
+  value: FilterField;
+  label: string;
+}
+
+@Component({
+  selector: 'app-root',
+  imports: [CommonModule, FormsModule],
+  templateUrl: './app.html',
+  styleUrl: './app.css',
+})
+export class AppComponent implements OnInit {
+  namespace = '';
+  secrets: SecretListItem[] = [];
+  loading = false;
+
+  view: PageView = 'list';
+  detailTab: DetailTab = 'overview';
+  activeSecret = '';
+  detail: SecretDetail | null = null;
+  events: SecretEvent[] = [];
+  yaml = '';
+
+  statusMessage = '';
+  statusError = false;
+  detailStatusMessage = '';
+  detailStatusError = false;
+
+  filterField: FilterField = 'name';
+  filterValue = '';
+  filters: SecretFilter[] = [];
+
+  editorOpen = false;
+  editorMode: EditorMode = 'create';
+  editorTitle = 'New Secret';
+  editorSubtitle = 'Create a managed secret in your Kubeflow profile namespace.';
+  editorError = '';
+  editorName = '';
+  editorType = 'Opaque';
+  editorStringData = '{\n  "username": "example",\n  "password": "secret"\n}';
+  editorData = '{}';
+
+  deleteOpen = false;
+  deleteError = '';
+
+  readonly filterFieldOptions: FilterFieldOption[] = [
+    { value: 'name', label: 'Name' },
+    { value: 'type', label: 'Type' },
+    { value: 'createdAt', label: 'Created at' },
+  ];
+
+  private readonly api = inject(SecretsAPIService);
+
+  ngOnInit(): void {
+    void this.bootstrap();
+  }
+
+  @HostListener('document:keydown.escape')
+  handleEscape(): void {
+    if (this.editorOpen) {
+      this.closeEditor();
+    }
+    if (this.deleteOpen) {
+      this.closeDeleteDialog();
+    }
+  }
+
+  get hasActiveFilters(): boolean {
+    return this.filters.length > 0;
+  }
+
+  get filteredSecrets(): SecretListItem[] {
+    if (!this.filters.length) {
+      return this.secrets;
+    }
+    return this.secrets.filter((secret) =>
+      this.filters.every((filter) => this.matchesFilter(secret, filter)),
+    );
+  }
+
+  get detailName(): string {
+    return this.activeSecret || '-';
+  }
+
+  get overviewItems(): OverviewItem[] {
+    if (!this.detail) {
+      return [];
+    }
+
+    return [
+      { label: 'Name', value: this.detail.name },
+      { label: 'Namespace', value: this.detail.namespace },
+      { label: 'Type', value: this.detail.type },
+      { label: 'Created at', value: this.formatDate(this.detail.creationTimestamp) },
+      { label: 'Managed label', value: this.detailManagedLabel(this.detail) },
+      { label: 'String data keys', value: this.detailKeys(this.detail.stringData) },
+      { label: 'Data keys', value: this.detailKeys(this.detail.data) },
+      { label: 'Labels', value: this.mapToLines(this.detail.labels) },
+      { label: 'Annotations', value: this.mapToLines(this.detail.annotations) },
+    ];
+  }
+
+  get hasOverviewData(): boolean {
+    return this.overviewItems.length > 0;
+  }
+
+  setStatus(message: string, isError = false): void {
+    this.statusMessage = message;
+    this.statusError = isError;
+  }
+
+  setDetailStatus(message: string, isError = false): void {
+    this.detailStatusMessage = message;
+    this.detailStatusError = isError;
+  }
+
+  setLoading(loading: boolean): void {
+    this.loading = loading;
+  }
+
+  setView(view: PageView): void {
+    this.view = view;
+  }
+
+  setActiveTab(tab: DetailTab): void {
+    this.detailTab = tab;
+  }
+
+  formatDate(value: string): string {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString();
+  }
+
+  applyFilter(): void {
+    const value = this.filterValue.trim();
+    if (!value) {
+      return;
+    }
+
+    this.filters.push({
+      id: this.buildFilterID(),
+      field: this.filterField,
+      value,
+    });
+    this.filterValue = '';
+  }
+
+  removeFilter(filterID: string): void {
+    this.filters = this.filters.filter((item) => item.id !== filterID);
+  }
+
+  fieldLabel(field: FilterField): string {
+    switch (field) {
+      case 'name':
+        return 'Name';
+      case 'type':
+        return 'Type';
+      case 'createdAt':
+        return 'Created at';
+      default:
+        return field;
+    }
+  }
+
+  clearFilters(): void {
+    this.filters = [];
+  }
+
+  async refresh(): Promise<void> {
+    await this.loadSecrets();
+    if (this.view === 'detail' && this.activeSecret) {
+      await this.loadSecretDetails(this.activeSecret);
+    }
+  }
+
+  async openSecretDetails(name: string): Promise<void> {
+    this.activeSecret = name;
+    this.setView('detail');
+    this.setActiveTab('overview');
+    await this.loadSecretDetails(name);
+  }
+
+  backToList(): void {
+    this.setView('list');
+  }
+
+  openCreateDialog(): void {
+    if (!this.namespace) {
+      this.setStatus('No namespace resolved for current user.', true);
+      return;
+    }
+
+    this.editorMode = 'create';
+    this.editorTitle = 'New Secret';
+    this.editorSubtitle = 'Create a managed secret in your Kubeflow profile namespace.';
+    this.editorError = '';
+    this.editorName = '';
+    this.editorType = 'Opaque';
+    this.editorStringData = '{\n  "username": "example",\n  "password": "secret"\n}';
+    this.editorData = '{}';
+    this.editorOpen = true;
+  }
+
+  async openEditDialog(name: string): Promise<void> {
+    this.editorError = '';
+    this.setLoading(true);
+    try {
+      const detail = await this.api.getSecret(name);
+      this.editorMode = 'edit';
+      this.activeSecret = detail.name;
+      this.editorTitle = 'Edit Secret';
+      this.editorSubtitle = 'Update values for this managed secret.';
+      this.editorName = detail.name || '';
+      this.editorType = detail.type || 'Opaque';
+      this.editorStringData = this.prettyJSON(detail.stringData);
+      this.editorData = this.prettyJSON(detail.data);
+      this.editorOpen = true;
+    } catch (error: unknown) {
+      this.setStatus(`Failed to load secret ${name}: ${this.errorMessage(error)}`, true);
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  closeEditor(): void {
+    this.editorOpen = false;
+  }
+
+  onEditorOverlayClick(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.closeEditor();
+    }
+  }
+
+  openDeleteDialog(secretName: string): void {
+    this.activeSecret = secretName;
+    this.deleteError = '';
+    this.deleteOpen = true;
+  }
+
+  closeDeleteDialog(): void {
+    this.deleteOpen = false;
+    this.deleteError = '';
+  }
+
+  onDeleteOverlayClick(event: Event): void {
+    if (event.target === event.currentTarget) {
+      this.closeDeleteDialog();
+    }
+  }
+
+  async saveSecret(): Promise<void> {
+    const name = this.editorName.trim();
+    if (!name) {
+      this.editorError = 'Name is required.';
+      return;
+    }
+
+    let stringData: Record<string, string>;
+    let data: Record<string, string>;
+    try {
+      stringData = this.parseStringObject(this.editorStringData || '{}', 'String Data');
+      data = this.parseStringObject(this.editorData || '{}', 'Data');
+    } catch (error: unknown) {
+      this.editorError = this.errorMessage(error);
+      return;
+    }
+
+    if (!Object.keys(stringData).length && !Object.keys(data).length) {
+      this.editorError = 'Provide at least one key in String Data or Data.';
+      return;
+    }
+
+    const payload: SecretUpsertRequest = {
+      namespace: this.namespace,
+      name,
+      type: this.editorType,
+      stringData,
+      data,
+    };
+
+    const isCreate = this.editorMode === 'create';
+    this.editorError = '';
+    this.setStatus(`${isCreate ? 'Creating' : 'Updating'} secret ${name}...`);
+    this.setLoading(true);
+
+    try {
+      if (isCreate) {
+        await this.api.createSecret(payload);
+      } else {
+        await this.api.updateSecret(name, payload);
+      }
+
+      this.closeEditor();
+      await this.loadSecrets();
+      this.setStatus(`Secret ${name} ${isCreate ? 'created' : 'updated'} in ${this.namespace}.`);
+      if (this.view === 'detail' && this.activeSecret === name) {
+        await this.loadSecretDetails(name);
+      }
+    } catch (error: unknown) {
+      const message = this.errorMessage(error);
+      this.editorError = message;
+      this.setStatus(`Failed to save secret ${name}: ${message}`, true);
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  async deleteSecret(): Promise<void> {
+    const name = this.activeSecret;
+    if (!name) {
+      this.deleteError = 'No secret selected.';
+      return;
+    }
+
+    this.deleteError = '';
+    this.setStatus(`Deleting secret ${name}...`);
+    this.setLoading(true);
+    try {
+      await this.api.deleteSecret(name);
+      this.closeDeleteDialog();
+      if (this.view === 'detail' && this.activeSecret === name) {
+        this.setView('list');
+        this.setDetailStatus('');
+      }
+      await this.loadSecrets();
+      this.setStatus(`Secret ${name} deleted from ${this.namespace}.`);
+    } catch (error: unknown) {
+      const message = this.errorMessage(error);
+      this.deleteError = message;
+      this.setStatus(`Failed to delete secret ${name}: ${message}`, true);
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  trackSecret(_index: number, item: SecretListItem): string {
+    return item.name;
+  }
+
+  trackFilter(_index: number, item: SecretFilter): string {
+    return item.id;
+  }
+
+  trackOverview(_index: number, item: OverviewItem): string {
+    return item.label;
+  }
+
+  trackEvent(index: number, event: SecretEvent): string {
+    return `${event.lastSeen}-${event.reason}-${index}`;
+  }
+
+  private async bootstrap(): Promise<void> {
+    this.setView('list');
+    this.setActiveTab('overview');
+    this.setStatus('Resolving profile namespace...');
+
+    try {
+      await this.loadNamespace();
+      await this.loadSecrets();
+    } catch (error: unknown) {
+      this.setStatus(this.errorMessage(error), true);
+    }
+  }
+
+  private async loadNamespace(): Promise<void> {
+    const namespaces = await this.api.getNamespaces();
+    if (!namespaces.length) {
+      throw new Error('No namespace resolved for current user.');
+    }
+
+    const namespace = namespaces[0];
+    if (!namespace) {
+      throw new Error('No namespace resolved for current user.');
+    }
+
+    this.namespace = namespace;
+  }
+
+  private async loadSecrets(): Promise<void> {
+    if (!this.namespace) {
+      return;
+    }
+
+    this.setStatus(`Loading managed secrets from ${this.namespace}...`);
+    this.setLoading(true);
+    try {
+      const payload = await this.api.listSecrets(this.namespace);
+      this.secrets = Array.isArray(payload.items) ? payload.items : [];
+      this.setStatus(`Loaded ${this.secrets.length} managed secret(s) from ${this.namespace}.`);
+    } catch (error: unknown) {
+      this.secrets = [];
+      this.setStatus(`Failed to load secrets: ${this.errorMessage(error)}`, true);
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  private async loadSecretDetails(name: string): Promise<void> {
+    this.setDetailStatus(`Loading details for secret ${name}...`);
+    this.setLoading(true);
+
+    try {
+      const [detail, eventsPayload, yamlPayload] = await Promise.all([
+        this.api.getSecret(name),
+        this.api.getSecretEvents(name),
+        this.api.getSecretYAML(name),
+      ]);
+
+      this.detail = detail;
+      this.events = Array.isArray(eventsPayload.items) ? eventsPayload.items : [];
+      this.yaml = yamlPayload.yaml || '';
+      this.setDetailStatus(`Loaded details for ${name}.`);
+    } catch (error: unknown) {
+      this.detail = {
+        name,
+        namespace: this.namespace,
+        type: '-',
+        creationTimestamp: '',
+        labels: {},
+        annotations: {},
+        data: {},
+        stringData: {},
+      };
+      this.events = [];
+      this.yaml = '# Failed to load YAML';
+      this.setDetailStatus(`Failed to load details: ${this.errorMessage(error)}`, true);
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  private matchesFilter(secret: SecretListItem, filter: SecretFilter): boolean {
+    const query = filter.value.trim().toLowerCase();
+    if (!query) {
+      return true;
+    }
+
+    switch (filter.field) {
+      case 'name':
+        return secret.name.toLowerCase().includes(query);
+      case 'type':
+        return secret.type.toLowerCase().includes(query);
+      case 'createdAt':
+        return (
+          this.formatDate(secret.creationTimestamp).toLowerCase().includes(query) ||
+          secret.creationTimestamp.toLowerCase().includes(query)
+        );
+      default:
+        return true;
+    }
+  }
+
+  private parseStringObject(raw: string, fieldName: string): Record<string, string> {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`${fieldName} must be valid JSON.`);
+    }
+
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+      throw new Error(`${fieldName} must be a JSON object.`);
+    }
+
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!key.trim()) {
+        throw new Error(`${fieldName} contains an empty key.`);
+      }
+      if (typeof value !== 'string') {
+        throw new Error(`${fieldName} values must be strings.`);
+      }
+      out[key] = value;
+    }
+    return out;
+  }
+
+  private normalizeMap(value: unknown): Record<string, string> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    const out: Record<string, string> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+      if (typeof raw === 'string') {
+        out[key] = raw;
+      }
+    }
+    return out;
+  }
+
+  private mapToLines(obj: unknown): string {
+    const normalized = this.normalizeMap(obj);
+    const keys = Object.keys(normalized).sort((left, right) => left.localeCompare(right));
+    if (!keys.length) {
+      return '-';
+    }
+    return keys.map((key) => `${key}: ${normalized[key] ?? ''}`).join('\n');
+  }
+
+  private detailManagedLabel(detail: SecretDetail): string {
+    const labels = this.normalizeMap(detail.labels);
+    return labels['managed-by'] ?? '-';
+  }
+
+  private detailKeys(value: unknown): string {
+    const keys = Object.keys(this.normalizeMap(value)).sort();
+    if (!keys.length) {
+      return '-';
+    }
+    return keys.join(', ');
+  }
+
+  private prettyJSON(value: unknown, fallback = '{}'): string {
+    if (!value || typeof value !== 'object') {
+      return fallback;
+    }
+    return JSON.stringify(value, null, 2);
+  }
+
+  private buildFilterID(): string {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+
+  private errorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return 'Unknown error';
+  }
+}

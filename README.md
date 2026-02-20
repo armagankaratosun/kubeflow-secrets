@@ -15,6 +15,8 @@ Small Kubeflow web app + API for creating Kubernetes secrets in user namespaces 
   - `GET /api/secrets` (optional `?namespace=` must match caller namespace)
   - `POST /api/secrets`
   - `GET /api/secrets/{name}`
+  - `GET /api/secrets/{name}/events`
+  - `GET /api/secrets/{name}/yaml`
   - `PUT /api/secrets/{name}`
   - `DELETE /api/secrets/{name}`
 - Only returns secrets created/managed by this app (`managed-by=kubeflow-secrets`).
@@ -33,7 +35,7 @@ npm run build --prefix frontend
 go run ./cmd/kubeflow-secrets
 ```
 
-The frontend build emits `cmd/kubeflow-secrets/static/app.js`.
+The Angular build emits static assets to `cmd/kubeflow-secrets/static/`.
 
 Server defaults:
 
@@ -45,7 +47,10 @@ Server defaults:
 
 ```bash
 npm ci --prefix frontend
+npm run lint --prefix frontend
+npm run format:check --prefix frontend
 npm run check --prefix frontend
+npm run start --prefix frontend
 gofmt -w cmd/kubeflow-secrets/*.go
 go test ./...
 golangci-lint run --config .golangci.yml

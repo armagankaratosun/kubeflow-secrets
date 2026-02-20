@@ -20,7 +20,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: Roboto, "Segoe UI", Arial, sans-serif;
+  font-family: Roboto, 'Segoe UI', Arial, sans-serif;
 }
 
 .page {
@@ -331,7 +331,13 @@ tbody tr:hover {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font:
+    12px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
   color: #334155;
 }
 
@@ -343,7 +349,13 @@ tbody tr:hover {
   overflow: auto;
   background: #f8fafc;
   color: #0f172a;
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font:
+    12px/1.5 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
   white-space: pre;
 }
 
@@ -433,7 +445,13 @@ tbody tr:hover {
 .field textarea {
   min-height: 140px;
   resize: vertical;
-  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font:
+    12px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    'Liberation Mono',
+    monospace;
 }
 
 .helper {

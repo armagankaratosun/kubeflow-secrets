@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY cmd ./cmd
-RUN test -f ./cmd/kubeflow-secrets/static/app.js
+RUN test -f ./cmd/kubeflow-secrets/static/index.html && test -f ./cmd/kubeflow-secrets/static/main.js
 ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \

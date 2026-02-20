@@ -1,15 +1,49 @@
 {
   "name": "kubeflow-secrets-frontend",
   "version": "0.1.0",
-  "private": true,
-  "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "build": "esbuild src/main.ts --bundle --format=iife --target=es2020 --outfile=../cmd/kubeflow-secrets/static/app.js",
-    "check": "npm run typecheck && npm run build"
+    "ng": "ng",
+    "start": "ng serve --host 0.0.0.0 --port 4200",
+    "build": "ng build --configuration production",
+    "typecheck": "ng build --configuration development --output-path .angular-check-dist",
+    "lint": "ng lint",
+    "lint:fix": "ng lint --fix",
+    "format": "prettier --write \"src/**/*.{ts,html,css}\" \"*.{json,js,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,html,css}\" \"*.{json,js,md}\"",
+    "check": "npm run typecheck && npm run build",
+    "watch": "ng build --watch --configuration development"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/common": "^20.3.0",
+    "@angular/compiler": "^20.3.0",
+    "@angular/core": "^20.3.0",
+    "@angular/forms": "^20.3.0",
+    "@angular/platform-browser": "^20.3.0",
+    "@angular/router": "^20.3.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0",
+    "zone.js": "~0.15.0"
   },
   "devDependencies": {
-    "esbuild": "^0.25.10",
-    "typescript": "^5.9.2"
+    "@angular/build": "^20.3.16",
+    "@angular/cli": "^20.3.16",
+    "@angular/compiler-cli": "^20.3.0",
+    "angular-eslint": "^20.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.2"
   }
 }

@@ -9,7 +9,8 @@
 *.dylib
 /kubeflow-secrets
 frontend/node_modules/
-cmd/kubeflow-secrets/static/app.js
+frontend/.angular/
+frontend/.angular-check-dist/
 
 # Test binary, built with `go test -c`
 *.test

@@ -1,0 +1,336 @@
+<main class="page">
+  <section [class.hidden]="view !== 'list'">
+    <section class="toolbar">
+      <h1 class="title">Secrets</h1>
+      <div class="toolbar-right">
+        <span class="namespace-chip">Namespace: {{ namespace || '-' }}</span>
+        <button type="button" class="btn" (click)="refresh()" [disabled]="loading">Refresh</button>
+        <button type="button" class="btn primary" (click)="openCreateDialog()" [disabled]="loading">
+          + New Secret
+        </button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="filter-row">
+        <span class="filter-label">Filter</span>
+        <select
+          class="filter-select"
+          [(ngModel)]="filterField"
+          [disabled]="loading"
+          aria-label="Filter field"
+        >
+          @for (option of filterFieldOptions; track option.value) {
+            <option [value]="option.value">{{ option.label }}</option>
+          }
+        </select>
+        <input
+          class="filter-input"
+          type="text"
+          placeholder="Enter property value"
+          [(ngModel)]="filterValue"
+          [disabled]="loading"
+          (keydown.enter)="applyFilter(); $event.preventDefault()"
+        />
+        <button type="button" class="btn" (click)="applyFilter()" [disabled]="loading">
+          Apply
+        </button>
+        <button
+          type="button"
+          class="btn"
+          (click)="clearFilters()"
+          [disabled]="loading || !hasActiveFilters"
+        >
+          Clear
+        </button>
+      </div>
+
+      <div class="chips">
+        @for (filter of filters; track trackFilter($index, filter)) {
+          <span class="chip">
+            <span>{{ fieldLabel(filter.field) }}: {{ filter.value }}</span>
+            <button
+              type="button"
+              class="chip-remove"
+              [attr.aria-label]="'Remove ' + fieldLabel(filter.field) + ' filter'"
+              (click)="removeFilter(filter.id)"
+            >
+              x
+            </button>
+          </span>
+        }
+      </div>
+
+      <div class="status-row" [class.error]="statusError">{{ statusMessage }}</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Created at</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          @if (filteredSecrets.length === 0) {
+            <tr>
+              <td class="empty" colspan="4">
+                {{
+                  secrets.length
+                    ? 'No managed secrets match the current filters.'
+                    : 'No managed secrets found. Create one with + New Secret.'
+                }}
+              </td>
+            </tr>
+          } @else {
+            @for (secret of filteredSecrets; track trackSecret($index, secret)) {
+              <tr>
+                <td>
+                  <button type="button" class="name-link" (click)="openSecretDetails(secret.name)">
+                    {{ secret.name }}
+                  </button>
+                </td>
+                <td>
+                  <span class="type-pill">{{ secret.type }}</span>
+                </td>
+                <td>{{ formatDate(secret.creationTimestamp) }}</td>
+                <td>
+                  <div class="actions">
+                    <button type="button" class="action-btn" (click)="openEditDialog(secret.name)">
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      class="action-btn danger"
+                      (click)="openDeleteDialog(secret.name)"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </section>
+  </section>
+
+  <section [class.hidden]="view !== 'detail'">
+    <section class="details-head">
+      <div>
+        <button type="button" class="btn back" (click)="backToList()">Back</button>
+        <h1 class="title small">Secret details</h1>
+        <h2 class="resource-title">{{ detailName }}</h2>
+      </div>
+      <div class="toolbar-right">
+        <button
+          type="button"
+          class="btn"
+          (click)="openEditDialog(activeSecret)"
+          [disabled]="loading || !activeSecret"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          class="btn danger"
+          (click)="openDeleteDialog(activeSecret)"
+          [disabled]="loading || !activeSecret"
+        >
+          Delete
+        </button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="tab-row">
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="detailTab === 'overview'"
+          (click)="setActiveTab('overview')"
+        >
+          Overview
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="detailTab === 'events'"
+          (click)="setActiveTab('events')"
+        >
+          Events
+        </button>
+        <button
+          type="button"
+          class="tab-btn"
+          [class.active]="detailTab === 'yaml'"
+          (click)="setActiveTab('yaml')"
+        >
+          YAML
+        </button>
+      </div>
+
+      <div class="status-row" [class.error]="detailStatusError">{{ detailStatusMessage }}</div>
+
+      <section [class.hidden]="detailTab !== 'overview'" class="tab-panel">
+        @if (hasOverviewData) {
+          <table class="details-table">
+            <tbody>
+              @for (item of overviewItems; track trackOverview($index, item)) {
+                <tr>
+                  <th>{{ item.label }}</th>
+                  <td>
+                    @if (item.value.includes('\n')) {
+                      <pre class="inline-pre">{{ item.value }}</pre>
+                    } @else {
+                      {{ item.value }}
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <div class="empty">No secret details loaded yet.</div>
+        }
+      </section>
+
+      <section [class.hidden]="detailTab !== 'events'" class="tab-panel">
+        <table>
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Reason</th>
+              <th>Message</th>
+              <th>Source</th>
+              <th>Last seen</th>
+              <th>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            @if (events.length === 0) {
+              <tr>
+                <td class="empty" colspan="6">No events found for this secret.</td>
+              </tr>
+            } @else {
+              @for (event of events; track trackEvent($index, event)) {
+                <tr>
+                  <td>{{ event.type || '-' }}</td>
+                  <td>{{ event.reason || '-' }}</td>
+                  <td>{{ event.message || '-' }}</td>
+                  <td>{{ event.source || '-' }}</td>
+                  <td>{{ formatDate(event.lastSeen) }}</td>
+                  <td>{{ event.count }}</td>
+                </tr>
+              }
+            }
+          </tbody>
+        </table>
+      </section>
+
+      <section [class.hidden]="detailTab !== 'yaml'" class="tab-panel">
+        <pre class="yaml-view">{{ yaml || '# Empty YAML output' }}</pre>
+      </section>
+    </section>
+  </section>
+</main>
+
+@if (editorOpen) {
+  <div
+    class="overlay open"
+    aria-hidden="false"
+    tabindex="0"
+    (click)="onEditorOverlayClick($event)"
+    (keydown.enter)="onEditorOverlayClick($event)"
+    (keydown.space)="onEditorOverlayClick($event)"
+  >
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="editorTitle">
+      <div class="dialog-head">
+        <h2 id="editorTitle" class="dialog-title">{{ editorTitle }}</h2>
+        <p class="dialog-subtitle">{{ editorSubtitle }}</p>
+      </div>
+      <div class="dialog-body">
+        <div class="field-grid">
+          <div class="field">
+            <label for="nameInput">Name *</label>
+            <input
+              id="nameInput"
+              type="text"
+              autocomplete="off"
+              placeholder="my-secret"
+              [(ngModel)]="editorName"
+              [disabled]="editorMode === 'edit'"
+            />
+          </div>
+          <div class="field">
+            <label for="namespaceInput">Namespace</label>
+            <input id="namespaceInput" type="text" [value]="namespace" disabled />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="typeSelect">Type *</label>
+          <select id="typeSelect" [(ngModel)]="editorType">
+            <option value="Opaque">Opaque</option>
+            <option value="kubernetes.io/dockerconfigjson">kubernetes.io/dockerconfigjson</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="stringDataInput">String Data (JSON object)</label>
+          <textarea
+            id="stringDataInput"
+            spellcheck="false"
+            [(ngModel)]="editorStringData"
+          ></textarea>
+          <div class="helper">UTF-8 key/value pairs.</div>
+        </div>
+
+        <div class="field">
+          <label for="dataInput">Data (base64 JSON object)</label>
+          <textarea id="dataInput" spellcheck="false" [(ngModel)]="editorData"></textarea>
+          <div class="helper">Optional for binary values.</div>
+        </div>
+      </div>
+      <div class="modal-error">{{ editorError }}</div>
+      <div class="dialog-footer">
+        <button type="button" class="btn primary" (click)="saveSecret()" [disabled]="loading">
+          {{ editorMode === 'create' ? 'Create' : 'Save' }}
+        </button>
+        <button type="button" class="btn" (click)="closeEditor()">Cancel</button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (deleteOpen) {
+  <div
+    class="overlay open"
+    aria-hidden="false"
+    tabindex="0"
+    (click)="onDeleteOverlayClick($event)"
+    (keydown.enter)="onDeleteOverlayClick($event)"
+    (keydown.space)="onDeleteOverlayClick($event)"
+  >
+    <div class="dialog small" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+      <div class="dialog-head">
+        <h2 id="deleteTitle" class="dialog-title">Delete Secret</h2>
+        <p class="dialog-subtitle">This action cannot be undone.</p>
+      </div>
+      <div class="dialog-body">
+        <p class="delete-message">
+          Delete secret "{{ activeSecret }}" in namespace "{{ namespace }}"?
+        </p>
+      </div>
+      <div class="modal-error">{{ deleteError }}</div>
+      <div class="dialog-footer">
+        <button type="button" class="btn danger" (click)="deleteSecret()" [disabled]="loading">
+          Delete
+        </button>
+        <button type="button" class="btn" (click)="closeDeleteDialog()">Cancel</button>
+      </div>
+    </div>
+  </div>
+}

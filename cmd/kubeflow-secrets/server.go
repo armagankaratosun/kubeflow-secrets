@@ -11,10 +11,13 @@ import (
 )
 
 const (
-	managedByLabelKey   = "managed-by"
-	managedByLabelValue = "kubeflow-secrets"
-	secretsPathPrefix   = "/api/secrets/"
-	maxPayloadBytes     = 1 << 20
+	managedByLabelKey              = "managed-by"
+	managedByLabelValue            = "kubeflow-secrets"
+	secretsPathPrefix              = "/api/secrets/"
+	secretSubresourceEvents        = "events"
+	secretSubresourceYAML          = "yaml"
+	secretPathWithSubresourceParts = 2
+	maxPayloadBytes                = 1 << 20
 )
 
 var (

@@ -12,32 +12,91 @@
 </head>
 <body>
   <main class="page">
-    <section class="toolbar">
-      <h1 class="title">Secrets</h1>
-      <div class="toolbar-right">
-        <span id="namespaceChip" class="namespace-chip">Namespace: -</span>
-        <button type="button" id="refreshBtn" class="btn">Refresh</button>
-        <button type="button" id="newBtn" class="btn primary">+ New Secret</button>
-      </div>
+    <section id="listView">
+      <section class="toolbar">
+        <h1 class="title">Secrets</h1>
+        <div class="toolbar-right">
+          <span id="namespaceChip" class="namespace-chip">Namespace: -</span>
+          <button type="button" id="refreshBtn" class="btn">Refresh</button>
+          <button type="button" id="newBtn" class="btn primary">+ New Secret</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="filter-row">
+          <span class="filter-label">Filter</span>
+          <select id="filterFieldSelect" class="filter-select" aria-label="Filter field">
+            <option value="name">Name</option>
+            <option value="type">Type</option>
+            <option value="createdAt">Created at</option>
+          </select>
+          <input id="filterInput" class="filter-input" type="text" placeholder="Enter property value">
+          <button type="button" id="addFilterBtn" class="btn">Apply</button>
+          <button type="button" id="clearFiltersBtn" class="btn">Clear</button>
+        </div>
+        <div id="filterChips" class="chips"></div>
+        <div id="statusRow" class="status-row"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Created at</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="secretsRows"></tbody>
+        </table>
+      </section>
     </section>
 
-    <section class="card">
-      <div class="filter-row">
-        <span class="filter-label">Filter</span>
-        <input id="filterInput" class="filter-input" type="text" placeholder="Enter name or type">
-      </div>
-      <div id="statusRow" class="status-row"></div>
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Type</th>
-            <th>Created at</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="secretsRows"></tbody>
-      </table>
+    <section id="detailView" class="hidden">
+      <section class="details-head">
+        <div>
+          <button type="button" id="backToListBtn" class="btn back">Back</button>
+          <h1 class="title small">Secret details</h1>
+          <h2 id="detailSecretName" class="resource-title">-</h2>
+        </div>
+        <div class="toolbar-right">
+          <button type="button" id="detailEditBtn" class="btn">Edit</button>
+          <button type="button" id="detailDeleteBtn" class="btn danger">Delete</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="tab-row">
+          <button type="button" id="overviewTabBtn" class="tab-btn active">Overview</button>
+          <button type="button" id="eventsTabBtn" class="tab-btn">Events</button>
+          <button type="button" id="yamlTabBtn" class="tab-btn">YAML</button>
+        </div>
+        <div id="detailStatusRow" class="status-row"></div>
+
+        <section id="overviewPanel" class="tab-panel">
+          <table class="details-table">
+            <tbody id="overviewBody"></tbody>
+          </table>
+        </section>
+
+        <section id="eventsPanel" class="tab-panel hidden">
+          <table>
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Reason</th>
+                <th>Message</th>
+                <th>Source</th>
+                <th>Last seen</th>
+                <th>Count</th>
+              </tr>
+            </thead>
+            <tbody id="eventsRows"></tbody>
+          </table>
+        </section>
+
+        <section id="yamlPanel" class="tab-panel hidden">
+          <pre id="yamlContent" class="yaml-view"></pre>
+        </section>
+      </section>
     </section>
   </main>
 
@@ -48,7 +107,6 @@
         <p id="editorSubtitle" class="dialog-subtitle"></p>
       </div>
       <div class="dialog-body">
-        <ul id="viewMeta" class="details-list" style="display: none;"></ul>
         <div class="field-grid">
           <div class="field">
             <label for="nameInput">Name *</label>
@@ -74,19 +132,19 @@
   "username": "example",
   "password": "secret"
 }</textarea>
-          <div class="helper">UTF-8 key/values. For docker config use key <code>.dockerconfigjson</code>.</div>
+          <div class="helper">UTF-8 key/value pairs.</div>
         </div>
 
         <div class="field">
           <label for="dataInput">Data (base64 JSON object)</label>
           <textarea id="dataInput" spellcheck="false">{}</textarea>
-          <div class="helper">Optional. Use this for non-text payload values.</div>
+          <div class="helper">Optional for binary values.</div>
         </div>
       </div>
       <div id="editorError" class="modal-error"></div>
       <div class="dialog-footer">
         <button type="button" id="saveBtn" class="btn primary">Save</button>
-        <button type="button" id="closeEditorBtn" class="btn">Close</button>
+        <button type="button" id="closeEditorBtn" class="btn">Cancel</button>
       </div>
     </div>
   </div>
@@ -95,10 +153,10 @@
     <div class="dialog small" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
       <div class="dialog-head">
         <h2 id="deleteTitle" class="dialog-title">Delete Secret</h2>
-        <p id="deleteSubtitle" class="dialog-subtitle">This action cannot be undone.</p>
+        <p class="dialog-subtitle">This action cannot be undone.</p>
       </div>
       <div class="dialog-body">
-        <p id="deleteMessage" style="margin: 0 0 10px; color: #374151; font-size: 14px;"></p>
+        <p id="deleteMessage" class="delete-message"></p>
       </div>
       <div id="deleteError" class="modal-error"></div>
       <div class="dialog-footer">

@@ -1,8 +1,11 @@
 import { APIClient } from "./api";
 import type {
   AppState,
+  DetailTab,
   EditorMode,
+  FilterField,
   SecretDetail,
+  SecretFilter,
   SecretListItem,
   SecretUpsertRequest,
 } from "./types";
@@ -59,23 +62,92 @@ function prettyJSON(value: unknown, fallback = "{}"): string {
   return JSON.stringify(value, null, 2);
 }
 
+function clearElement(el: HTMLElement): void {
+  while (el.firstChild) {
+    el.removeChild(el.firstChild);
+  }
+}
+
+function mapToLines(obj: Record<string, string>): string {
+  const keys = Object.keys(obj);
+  if (!keys.length) {
+    return "-";
+  }
+  return keys
+    .sort((left, right) => left.localeCompare(right))
+    .map((key) => `${key}: ${obj[key] ?? ""}`)
+    .join("\n");
+}
+
+function buildFilterID(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function fieldLabel(field: FilterField): string {
+  switch (field) {
+    case "name":
+      return "Name";
+    case "type":
+      return "Type";
+    case "createdAt":
+      return "Created at";
+    default:
+      return "Field";
+  }
+}
+
 const state: AppState = {
   namespace: "",
   secrets: [],
-  filter: "",
   loading: false,
+  filterField: "name",
+  filterValue: "",
+  filters: [],
+  view: "list",
+  detailTab: "overview",
   mode: "create",
   activeSecret: "",
+  detail: null,
+  events: [],
+  yaml: "",
 };
 
 const api = new APIClient();
 
+const listView = mustElement<HTMLElement>("listView");
+const detailView = mustElement<HTMLElement>("detailView");
+
 const namespaceChip = mustElement<HTMLSpanElement>("namespaceChip");
 const refreshBtn = mustElement<HTMLButtonElement>("refreshBtn");
 const newBtn = mustElement<HTMLButtonElement>("newBtn");
+
+const filterFieldSelect = mustElement<HTMLSelectElement>("filterFieldSelect");
 const filterInput = mustElement<HTMLInputElement>("filterInput");
+const addFilterBtn = mustElement<HTMLButtonElement>("addFilterBtn");
+const clearFiltersBtn = mustElement<HTMLButtonElement>("clearFiltersBtn");
+const filterChips = mustElement<HTMLDivElement>("filterChips");
+
 const statusRow = mustElement<HTMLDivElement>("statusRow");
 const rows = mustElement<HTMLTableSectionElement>("secretsRows");
+
+const backToListBtn = mustElement<HTMLButtonElement>("backToListBtn");
+const detailSecretName = mustElement<HTMLHeadingElement>("detailSecretName");
+const detailStatusRow = mustElement<HTMLDivElement>("detailStatusRow");
+const detailEditBtn = mustElement<HTMLButtonElement>("detailEditBtn");
+const detailDeleteBtn = mustElement<HTMLButtonElement>("detailDeleteBtn");
+
+const overviewTabBtn = mustElement<HTMLButtonElement>("overviewTabBtn");
+const eventsTabBtn = mustElement<HTMLButtonElement>("eventsTabBtn");
+const yamlTabBtn = mustElement<HTMLButtonElement>("yamlTabBtn");
+const overviewPanel = mustElement<HTMLElement>("overviewPanel");
+const eventsPanel = mustElement<HTMLElement>("eventsPanel");
+const yamlPanel = mustElement<HTMLElement>("yamlPanel");
+const overviewBody = mustElement<HTMLTableSectionElement>("overviewBody");
+const eventsRows = mustElement<HTMLTableSectionElement>("eventsRows");
+const yamlContent = mustElement<HTMLPreElement>("yamlContent");
 
 const editorOverlay = mustElement<HTMLDivElement>("editorOverlay");
 const editorTitle = mustElement<HTMLHeadingElement>("editorTitle");
@@ -83,8 +155,6 @@ const editorSubtitle = mustElement<HTMLParagraphElement>("editorSubtitle");
 const editorError = mustElement<HTMLDivElement>("editorError");
 const closeEditorBtn = mustElement<HTMLButtonElement>("closeEditorBtn");
 const saveBtn = mustElement<HTMLButtonElement>("saveBtn");
-const viewMeta = mustElement<HTMLUListElement>("viewMeta");
-
 const nameInput = mustElement<HTMLInputElement>("nameInput");
 const namespaceInput = mustElement<HTMLInputElement>("namespaceInput");
 const typeSelect = mustElement<HTMLSelectElement>("typeSelect");
@@ -102,10 +172,19 @@ function setStatus(message: string, isError = false): void {
   statusRow.className = isError ? "status-row error" : "status-row";
 }
 
+function setDetailStatus(message: string, isError = false): void {
+  detailStatusRow.textContent = message;
+  detailStatusRow.className = isError ? "status-row error" : "status-row";
+}
+
 function setLoading(loading: boolean): void {
   state.loading = loading;
   refreshBtn.disabled = loading;
   newBtn.disabled = loading;
+  addFilterBtn.disabled = loading;
+  clearFiltersBtn.disabled = loading || state.filters.length === 0;
+  detailEditBtn.disabled = loading || !state.activeSecret;
+  detailDeleteBtn.disabled = loading || !state.activeSecret;
   saveBtn.disabled = loading;
   confirmDeleteBtn.disabled = loading;
 }
@@ -120,64 +199,241 @@ function closeOverlay(overlay: HTMLDivElement): void {
   overlay.setAttribute("aria-hidden", "true");
 }
 
-function resetEditorError(): void {
-  editorError.textContent = "";
-}
-
-function resetDeleteError(): void {
-  deleteError.textContent = "";
-}
-
-function setEditorReadOnly(isReadOnly: boolean): void {
-  nameInput.disabled = isReadOnly || state.mode === "edit";
-  typeSelect.disabled = isReadOnly;
-  stringDataInput.disabled = isReadOnly;
-  dataInput.disabled = isReadOnly;
-  saveBtn.style.display = isReadOnly ? "none" : "inline-flex";
-}
-
-function clearElement(el: HTMLElement): void {
-  while (el.firstChild) {
-    el.removeChild(el.firstChild);
+function setView(view: "list" | "detail"): void {
+  state.view = view;
+  if (view === "list") {
+    listView.classList.remove("hidden");
+    detailView.classList.add("hidden");
+  } else {
+    listView.classList.add("hidden");
+    detailView.classList.remove("hidden");
   }
 }
 
-function renderSecretMeta(detail: SecretDetail): void {
-  clearElement(viewMeta);
+function setActiveTab(tab: DetailTab): void {
+  state.detailTab = tab;
+  const tabs: Array<{ button: HTMLButtonElement; panel: HTMLElement; name: DetailTab }> = [
+    { button: overviewTabBtn, panel: overviewPanel, name: "overview" },
+    { button: eventsTabBtn, panel: eventsPanel, name: "events" },
+    { button: yamlTabBtn, panel: yamlPanel, name: "yaml" },
+  ];
 
+  for (const current of tabs) {
+    const active = current.name === tab;
+    current.button.classList.toggle("active", active);
+    current.panel.classList.toggle("hidden", !active);
+  }
+}
+
+function renderFilterChips(): void {
+  clearElement(filterChips);
+  for (const filter of state.filters) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+
+    const text = document.createElement("span");
+    text.textContent = `${fieldLabel(filter.field)}: ${filter.value}`;
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "chip-remove";
+    removeBtn.textContent = "x";
+    removeBtn.setAttribute("aria-label", `Remove ${fieldLabel(filter.field)} filter`);
+    removeBtn.addEventListener("click", () => {
+      state.filters = state.filters.filter((item) => item.id !== filter.id);
+      renderFilterChips();
+      renderTable();
+      setLoading(state.loading);
+    });
+
+    chip.appendChild(text);
+    chip.appendChild(removeBtn);
+    filterChips.appendChild(chip);
+  }
+}
+
+function matchesFilter(secret: SecretListItem, filter: SecretFilter): boolean {
+  const query = filter.value.trim().toLowerCase();
+  if (!query) {
+    return true;
+  }
+
+  switch (filter.field) {
+    case "name":
+      return secret.name.toLowerCase().includes(query);
+    case "type":
+      return secret.type.toLowerCase().includes(query);
+    case "createdAt":
+      return (
+        formatDate(secret.creationTimestamp).toLowerCase().includes(query) ||
+        secret.creationTimestamp.toLowerCase().includes(query)
+      );
+    default:
+      return true;
+  }
+}
+
+function filteredSecrets(): SecretListItem[] {
+  if (!state.filters.length) {
+    return state.secrets;
+  }
+  return state.secrets.filter((secret) => {
+    return state.filters.every((filter) => matchesFilter(secret, filter));
+  });
+}
+
+function renderTable(): void {
+  rows.innerHTML = "";
+  const list = filteredSecrets();
+
+  if (!list.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.className = "empty";
+    td.textContent = state.secrets.length
+      ? "No managed secrets match the current filters."
+      : "No managed secrets found. Create one with + New Secret.";
+    tr.appendChild(td);
+    rows.appendChild(tr);
+    return;
+  }
+
+  for (const secret of list) {
+    const tr = document.createElement("tr");
+
+    const nameTd = document.createElement("td");
+    const nameBtn = document.createElement("button");
+    nameBtn.type = "button";
+    nameBtn.className = "name-link";
+    nameBtn.textContent = secret.name;
+    nameBtn.addEventListener("click", () => {
+      void openSecretDetails(secret.name);
+    });
+    nameTd.appendChild(nameBtn);
+
+    const typeTd = document.createElement("td");
+    const typePill = document.createElement("span");
+    typePill.className = "type-pill";
+    typePill.textContent = secret.type;
+    typeTd.appendChild(typePill);
+
+    const createdTd = document.createElement("td");
+    createdTd.textContent = formatDate(secret.creationTimestamp);
+
+    const actionsTd = document.createElement("td");
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "action-btn";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", () => {
+      void openEditDialog(secret.name);
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "action-btn danger";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", () => {
+      openDeleteDialog(secret.name);
+    });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(deleteBtn);
+    actionsTd.appendChild(actions);
+
+    tr.appendChild(nameTd);
+    tr.appendChild(typeTd);
+    tr.appendChild(createdTd);
+    tr.appendChild(actionsTd);
+    rows.appendChild(tr);
+  }
+}
+
+function renderOverview(detail: SecretDetail): void {
+  clearElement(overviewBody);
   const items: Array<[string, string]> = [
     ["Name", detail.name],
     ["Namespace", detail.namespace],
     ["Type", detail.type],
     ["Created at", formatDate(detail.creationTimestamp)],
+    ["Managed label", detail.labels["managed-by"] ?? "-"],
+    ["String data keys", Object.keys(detail.stringData).sort().join(", ") || "-"],
+    ["Data keys", Object.keys(detail.data).sort().join(", ") || "-"],
+    ["Labels", mapToLines(detail.labels)],
+    ["Annotations", mapToLines(detail.annotations)],
   ];
 
   for (const [label, value] of items) {
-    const li = document.createElement("li");
-    const strong = document.createElement("strong");
-    strong.textContent = `${label}: `;
+    const tr = document.createElement("tr");
 
-    const code = document.createElement("code");
-    code.textContent = value;
+    const key = document.createElement("th");
+    key.textContent = label;
 
-    li.appendChild(strong);
-    li.appendChild(code);
-    viewMeta.appendChild(li);
+    const val = document.createElement("td");
+    if (value.includes("\n")) {
+      const pre = document.createElement("pre");
+      pre.className = "inline-pre";
+      pre.textContent = value;
+      val.appendChild(pre);
+    } else {
+      val.textContent = value;
+    }
+
+    tr.appendChild(key);
+    tr.appendChild(val);
+    overviewBody.appendChild(tr);
   }
 }
 
-function filteredSecrets(): SecretListItem[] {
-  const query = state.filter.trim().toLowerCase();
-  if (!query) {
-    return state.secrets;
+function renderEvents(): void {
+  clearElement(eventsRows);
+  if (!state.events.length) {
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.className = "empty";
+    td.colSpan = 6;
+    td.textContent = "No events found for this secret.";
+    tr.appendChild(td);
+    eventsRows.appendChild(tr);
+    return;
   }
 
-  return state.secrets.filter((secret) => {
-    return (
-      secret.name.toLowerCase().includes(query) ||
-      secret.type.toLowerCase().includes(query)
-    );
-  });
+  for (const event of state.events) {
+    const tr = document.createElement("tr");
+    const cells = [
+      event.type || "-",
+      event.reason || "-",
+      event.message || "-",
+      event.source || "-",
+      formatDate(event.lastSeen),
+      String(event.count),
+    ];
+    for (const value of cells) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.appendChild(td);
+    }
+    eventsRows.appendChild(tr);
+  }
+}
+
+function applyFilter(): void {
+  const value = filterInput.value.trim();
+  if (!value) {
+    return;
+  }
+
+  const field = filterFieldSelect.value as FilterField;
+  state.filters.push({ id: buildFilterID(), field, value });
+  state.filterValue = "";
+  filterInput.value = "";
+  renderFilterChips();
+  renderTable();
+  setLoading(state.loading);
 }
 
 async function loadNamespace(): Promise<void> {
@@ -194,81 +450,6 @@ async function loadNamespace(): Promise<void> {
   state.namespace = namespace;
   namespaceChip.textContent = `Namespace: ${namespace}`;
   namespaceInput.value = namespace;
-}
-
-function renderTable(): void {
-  rows.innerHTML = "";
-  const list = filteredSecrets();
-
-  if (!list.length) {
-    const tr = document.createElement("tr");
-    const td = document.createElement("td");
-    td.colSpan = 4;
-    td.className = "empty";
-    td.textContent = state.secrets.length
-      ? "No secrets match the current filter."
-      : "No managed secrets found. Create one with + New Secret.";
-
-    tr.appendChild(td);
-    rows.appendChild(tr);
-    return;
-  }
-
-  for (const secret of list) {
-    const tr = document.createElement("tr");
-
-    const nameTd = document.createElement("td");
-    nameTd.className = "name";
-    nameTd.textContent = secret.name;
-
-    const typeTd = document.createElement("td");
-    const typePill = document.createElement("span");
-    typePill.className = "type-pill";
-    typePill.textContent = secret.type;
-    typeTd.appendChild(typePill);
-
-    const createdTd = document.createElement("td");
-    createdTd.textContent = formatDate(secret.creationTimestamp);
-
-    const actionsTd = document.createElement("td");
-    const actions = document.createElement("div");
-    actions.className = "actions";
-
-    const viewBtn = document.createElement("button");
-    viewBtn.type = "button";
-    viewBtn.className = "action-btn";
-    viewBtn.textContent = "View";
-    viewBtn.addEventListener("click", () => {
-      void openEditorFromSecret("view", secret.name);
-    });
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "action-btn";
-    editBtn.textContent = "Edit";
-    editBtn.addEventListener("click", () => {
-      void openEditorFromSecret("edit", secret.name);
-    });
-
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "action-btn delete";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.addEventListener("click", () => {
-      openDeleteDialog(secret.name);
-    });
-
-    actions.appendChild(viewBtn);
-    actions.appendChild(editBtn);
-    actions.appendChild(deleteBtn);
-    actionsTd.appendChild(actions);
-
-    tr.appendChild(nameTd);
-    tr.appendChild(typeTd);
-    tr.appendChild(createdTd);
-    tr.appendChild(actionsTd);
-    rows.appendChild(tr);
-  }
 }
 
 async function loadSecrets(): Promise<void> {
@@ -292,6 +473,55 @@ async function loadSecrets(): Promise<void> {
   }
 }
 
+async function loadSecretDetails(name: string): Promise<void> {
+  setDetailStatus(`Loading details for secret ${name}...`);
+  setLoading(true);
+
+  try {
+    const [detail, eventsPayload, yamlPayload] = await Promise.all([
+      api.getSecret(name),
+      api.getSecretEvents(name),
+      api.getSecretYAML(name),
+    ]);
+
+    state.detail = detail;
+    state.events = Array.isArray(eventsPayload.items) ? eventsPayload.items : [];
+    state.yaml = yamlPayload.yaml || "";
+
+    renderOverview(detail);
+    renderEvents();
+    yamlContent.textContent = state.yaml || "# Empty YAML output";
+    setDetailStatus(`Loaded details for ${name}.`);
+  } catch (error: unknown) {
+    state.detail = null;
+    state.events = [];
+    state.yaml = "";
+    renderOverview({
+      name,
+      namespace: state.namespace,
+      type: "-",
+      creationTimestamp: "",
+      labels: {},
+      annotations: {},
+      data: {},
+      stringData: {},
+    });
+    renderEvents();
+    yamlContent.textContent = "# Failed to load YAML";
+    setDetailStatus(`Failed to load details: ${errorMessage(error)}`, true);
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function openSecretDetails(name: string): Promise<void> {
+  state.activeSecret = name;
+  detailSecretName.textContent = name;
+  setView("detail");
+  setActiveTab("overview");
+  await loadSecretDetails(name);
+}
+
 function openCreateDialog(): void {
   if (!state.namespace) {
     setStatus("No namespace resolved for current user.", true);
@@ -303,57 +533,35 @@ function openCreateDialog(): void {
 
   editorTitle.textContent = "New Secret";
   editorSubtitle.textContent = "Create a managed secret in your Kubeflow profile namespace.";
-  viewMeta.style.display = "none";
-
   namespaceInput.value = state.namespace;
   nameInput.value = "";
   typeSelect.value = "Opaque";
   stringDataInput.value = '{\n  "username": "example",\n  "password": "secret"\n}';
   dataInput.value = "{}";
-
+  nameInput.disabled = false;
+  editorError.textContent = "";
   saveBtn.textContent = "Create";
-  setEditorReadOnly(false);
-  resetEditorError();
   openOverlay(editorOverlay);
   setTimeout(() => nameInput.focus(), 10);
 }
 
-async function openEditorFromSecret(mode: Exclude<EditorMode, "create">, name: string): Promise<void> {
-  if (!state.namespace) {
-    setStatus("No namespace resolved for current user.", true);
-    return;
-  }
-
-  resetEditorError();
+async function openEditDialog(name: string): Promise<void> {
+  editorError.textContent = "";
   setLoading(true);
   try {
     const detail = await api.getSecret(name);
-
-    state.mode = mode;
+    state.mode = "edit";
     state.activeSecret = detail.name;
 
+    editorTitle.textContent = "Edit Secret";
+    editorSubtitle.textContent = "Update values for this managed secret.";
     namespaceInput.value = detail.namespace || state.namespace;
     nameInput.value = detail.name || "";
+    nameInput.disabled = true;
     typeSelect.value = detail.type || "Opaque";
     stringDataInput.value = prettyJSON(detail.stringData);
     dataInput.value = prettyJSON(detail.data);
-
-    if (mode === "view") {
-      editorTitle.textContent = "View Secret";
-      editorSubtitle.textContent = "Read-only details for this managed secret.";
-      saveBtn.textContent = "Save";
-      setEditorReadOnly(true);
-      renderSecretMeta(detail);
-      viewMeta.style.display = "block";
-    } else {
-      editorTitle.textContent = "Edit Secret";
-      editorSubtitle.textContent = "Update values for this managed secret.";
-      saveBtn.textContent = "Save";
-      setEditorReadOnly(false);
-      nameInput.disabled = true;
-      viewMeta.style.display = "none";
-    }
-
+    saveBtn.textContent = "Save";
     openOverlay(editorOverlay);
   } catch (error: unknown) {
     setStatus(`Failed to load secret ${name}: ${errorMessage(error)}`, true);
@@ -369,7 +577,7 @@ function closeEditor(): void {
 function openDeleteDialog(secretName: string): void {
   state.activeSecret = secretName;
   deleteMessage.textContent = `Delete secret "${secretName}" in namespace "${state.namespace}"?`;
-  resetDeleteError();
+  deleteError.textContent = "";
   openOverlay(deleteOverlay);
 }
 
@@ -378,11 +586,6 @@ function closeDeleteDialog(): void {
 }
 
 async function saveSecret(): Promise<void> {
-  if (state.mode === "view") {
-    closeEditor();
-    return;
-  }
-
   const name = nameInput.value.trim();
   if (!name) {
     editorError.textContent = "Name is required.";
@@ -425,8 +628,11 @@ async function saveSecret(): Promise<void> {
     }
 
     closeEditor();
-    setStatus(`Secret ${name} ${isCreate ? "created" : "updated"} in ${state.namespace}.`);
     await loadSecrets();
+    setStatus(`Secret ${name} ${isCreate ? "created" : "updated"} in ${state.namespace}.`);
+    if (state.view === "detail" && state.activeSecret === name) {
+      await loadSecretDetails(name);
+    }
   } catch (error: unknown) {
     const message = errorMessage(error);
     editorError.textContent = message;
@@ -443,14 +649,18 @@ async function deleteSecret(): Promise<void> {
     return;
   }
 
-  resetDeleteError();
+  deleteError.textContent = "";
   setStatus(`Deleting secret ${name}...`);
   setLoading(true);
   try {
     await api.deleteSecret(name);
     closeDeleteDialog();
-    setStatus(`Secret ${name} deleted from ${state.namespace}.`);
+    if (state.view === "detail" && state.activeSecret === name) {
+      setView("list");
+      setDetailStatus("");
+    }
     await loadSecrets();
+    setStatus(`Secret ${name} deleted from ${state.namespace}.`);
   } catch (error: unknown) {
     const message = errorMessage(error);
     deleteError.textContent = message;
@@ -460,12 +670,37 @@ async function deleteSecret(): Promise<void> {
   }
 }
 
+filterFieldSelect.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLSelectElement)) {
+    return;
+  }
+  state.filterField = target.value as FilterField;
+});
+
 filterInput.addEventListener("input", (event) => {
   const target = event.target;
-  if (target instanceof HTMLInputElement) {
-    state.filter = target.value;
-    renderTable();
+  if (!(target instanceof HTMLInputElement)) {
+    return;
   }
+  state.filterValue = target.value;
+});
+
+filterInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter") {
+    return;
+  }
+  event.preventDefault();
+  applyFilter();
+});
+
+addFilterBtn.addEventListener("click", applyFilter);
+
+clearFiltersBtn.addEventListener("click", () => {
+  state.filters = [];
+  renderFilterChips();
+  renderTable();
+  setLoading(state.loading);
 });
 
 refreshBtn.addEventListener("click", () => {
@@ -473,6 +708,33 @@ refreshBtn.addEventListener("click", () => {
 });
 
 newBtn.addEventListener("click", openCreateDialog);
+
+backToListBtn.addEventListener("click", () => {
+  setView("list");
+});
+
+detailEditBtn.addEventListener("click", () => {
+  if (state.activeSecret) {
+    void openEditDialog(state.activeSecret);
+  }
+});
+
+detailDeleteBtn.addEventListener("click", () => {
+  if (state.activeSecret) {
+    openDeleteDialog(state.activeSecret);
+  }
+});
+
+overviewTabBtn.addEventListener("click", () => {
+  setActiveTab("overview");
+});
+eventsTabBtn.addEventListener("click", () => {
+  setActiveTab("events");
+});
+yamlTabBtn.addEventListener("click", () => {
+  setActiveTab("yaml");
+});
+
 saveBtn.addEventListener("click", () => {
   void saveSecret();
 });
@@ -508,7 +770,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 async function bootstrap(): Promise<void> {
+  setView("list");
+  setActiveTab("overview");
+  renderFilterChips();
   setStatus("Resolving profile namespace...");
+
   try {
     await loadNamespace();
     await loadSecrets();

@@ -1,14 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/yaml"
 )
 
 func (s *server) withLogging(next http.Handler) http.Handler {
@@ -100,21 +103,38 @@ func (s *server) handleSecretByName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secretName, err := secretNameFromPath(r.URL.Path)
+	secretName, subresource, err := parseSecretPath(r.URL.Path)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid secret name in path")
+		writeError(w, http.StatusBadRequest, "invalid path")
 		return
 	}
 
-	switch r.Method {
-	case http.MethodGet:
-		s.handleSecretGet(w, r, impClient, userNamespace, secretName)
-	case http.MethodPut:
-		s.handleSecretUpdate(w, r, impClient, userNamespace, secretName)
-	case http.MethodDelete:
-		s.handleSecretDelete(w, r, impClient, userNamespace, secretName)
+	switch subresource {
+	case "":
+		switch r.Method {
+		case http.MethodGet:
+			s.handleSecretGet(w, r, impClient, userNamespace, secretName)
+		case http.MethodPut:
+			s.handleSecretUpdate(w, r, impClient, userNamespace, secretName)
+		case http.MethodDelete:
+			s.handleSecretDelete(w, r, impClient, userNamespace, secretName)
+		default:
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		}
+	case secretSubresourceEvents:
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.handleSecretEvents(w, r, impClient, userNamespace, secretName)
+	case secretSubresourceYAML:
+		if r.Method != http.MethodGet {
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		s.handleSecretYAML(w, r, impClient, userNamespace, secretName)
 	default:
-		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		writeError(w, http.StatusBadRequest, "invalid path")
 	}
 }
 
@@ -226,6 +246,68 @@ func (s *server) handleSecretGet(w http.ResponseWriter, r *http.Request, impClie
 	writeJSON(w, http.StatusOK, secretToDetail(secret))
 }
 
+func (s *server) handleSecretEvents(w http.ResponseWriter, r *http.Request, impClient kubernetes.Interface, userNamespace, secretName string) {
+	if _, err := s.getManagedSecret(r.Context(), impClient, userNamespace, secretName); err != nil {
+		status, msg := mapKubeError(err, "failed to get secret events")
+		writeError(w, status, msg)
+		return
+	}
+
+	fieldSelector := fmt.Sprintf(
+		"involvedObject.kind=Secret,involvedObject.namespace=%s,involvedObject.name=%s",
+		userNamespace,
+		secretName,
+	)
+	events, err := impClient.CoreV1().Events(userNamespace).List(
+		r.Context(),
+		metav1.ListOptions{FieldSelector: fieldSelector},
+	)
+	if err != nil {
+		status, msg := mapKubeError(err, "failed to list events")
+		writeError(w, status, msg)
+		return
+	}
+
+	items := make([]secretEventItem, 0, len(events.Items))
+	for _, event := range events.Items {
+		items = append(items, secretEventItem{
+			Type:      event.Type,
+			Reason:    event.Reason,
+			Message:   event.Message,
+			Count:     event.Count,
+			FirstSeen: eventTimeOrZero(event.FirstTimestamp.Time, event.EventTime.Time, event.CreationTimestamp.Time),
+			LastSeen:  eventTimeOrZero(event.LastTimestamp.Time, event.EventTime.Time, event.CreationTimestamp.Time),
+			Source:    sourceSummary(event.Source),
+		})
+	}
+
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].LastSeen.After(items[j].LastSeen)
+	})
+
+	writeJSON(w, http.StatusOK, secretEventsResponse{Items: items})
+}
+
+func (s *server) handleSecretYAML(w http.ResponseWriter, r *http.Request, impClient kubernetes.Interface, userNamespace, secretName string) {
+	secret, err := s.getManagedSecret(r.Context(), impClient, userNamespace, secretName)
+	if err != nil {
+		status, msg := mapKubeError(err, "failed to get secret yaml")
+		writeError(w, status, msg)
+		return
+	}
+
+	readonly := secret.DeepCopy()
+	readonly.ManagedFields = nil
+
+	encoded, err := yaml.Marshal(readonly)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to render yaml")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, secretYAMLResponse{YAML: string(encoded)})
+}
+
 func (s *server) handleSecretUpdate(w http.ResponseWriter, r *http.Request, impClient kubernetes.Interface, userNamespace, secretName string) {
 	existing, err := s.getManagedSecret(r.Context(), impClient, userNamespace, secretName)
 	if err != nil {
@@ -321,4 +403,28 @@ func (s *server) readUpsertRequest(r *http.Request) (secretUpsertRequest, error)
 		return secretUpsertRequest{}, err
 	}
 	return req, nil
+}
+
+func eventTimeOrZero(values ...time.Time) time.Time {
+	for _, value := range values {
+		if !value.IsZero() {
+			return value
+		}
+	}
+	return time.Time{}
+}
+
+func sourceSummary(source corev1.EventSource) string {
+	component := strings.TrimSpace(source.Component)
+	host := strings.TrimSpace(source.Host)
+	switch {
+	case component == "" && host == "":
+		return "-"
+	case component == "":
+		return host
+	case host == "":
+		return component
+	default:
+		return component + "@" + host
+	}
 }

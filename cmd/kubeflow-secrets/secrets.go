@@ -111,24 +111,44 @@ func secretToDetail(secret *corev1.Secret) secretDetailResponse {
 	}
 }
 
-func secretNameFromPath(path string) (string, error) {
+func parseSecretPath(path string) (string, string, error) {
 	if !strings.HasPrefix(path, secretsPathPrefix) {
-		return "", errors.New("invalid path")
+		return "", "", errors.New("invalid path")
 	}
 
 	raw := strings.TrimPrefix(path, secretsPathPrefix)
-	if raw == "" || strings.Contains(raw, "/") {
-		return "", errors.New("invalid secret name")
+	if raw == "" {
+		return "", "", errors.New("invalid secret name")
 	}
 
-	name, err := url.PathUnescape(raw)
+	parts := strings.Split(raw, "/")
+	switch len(parts) {
+	case 1, secretPathWithSubresourceParts:
+	default:
+		return "", "", errors.New("invalid path")
+	}
+
+	name, err := url.PathUnescape(parts[0])
 	if err != nil {
-		return "", errors.New("invalid secret name")
+		return "", "", errors.New("invalid secret name")
 	}
 	if errs := validation.IsDNS1123Subdomain(name); len(errs) > 0 {
-		return "", errors.New("invalid secret name")
+		return "", "", errors.New("invalid secret name")
 	}
-	return name, nil
+
+	subresource := ""
+	if len(parts) == secretPathWithSubresourceParts {
+		subresource = strings.TrimSpace(parts[1])
+		if subresource == "" {
+			return "", "", errors.New("invalid path")
+		}
+		switch subresource {
+		case secretSubresourceEvents, secretSubresourceYAML:
+		default:
+			return "", "", errors.New("invalid path")
+		}
+	}
+	return name, subresource, nil
 }
 
 func copyStringMap(in map[string]string) map[string]string {

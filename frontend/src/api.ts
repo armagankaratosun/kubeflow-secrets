@@ -1,8 +1,10 @@
 import type {
   NamespaceResponse,
   SecretDetail,
+  SecretEventsResponse,
   SecretListResponse,
   SecretUpsertRequest,
+  SecretYAMLResponse,
 } from "./types";
 
 interface APIErrorPayload {
@@ -57,6 +59,18 @@ export class APIClient {
 
   async getSecret(name: string): Promise<SecretDetail> {
     return this.request<SecretDetail>(`/api/secrets/${encodeURIComponent(name)}`);
+  }
+
+  async getSecretEvents(name: string): Promise<SecretEventsResponse> {
+    return this.request<SecretEventsResponse>(
+      `/api/secrets/${encodeURIComponent(name)}/events`,
+    );
+  }
+
+  async getSecretYAML(name: string): Promise<SecretYAMLResponse> {
+    return this.request<SecretYAMLResponse>(
+      `/api/secrets/${encodeURIComponent(name)}/yaml`,
+    );
   }
 
   async createSecret(payload: SecretUpsertRequest): Promise<void> {

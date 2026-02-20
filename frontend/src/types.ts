@@ -1,6 +1,15 @@
 export type SecretType = "Opaque" | "kubernetes.io/dockerconfigjson" | string;
 
-export type EditorMode = "create" | "edit" | "view";
+export type EditorMode = "create" | "edit";
+export type PageView = "list" | "detail";
+export type DetailTab = "overview" | "events" | "yaml";
+export type FilterField = "name" | "type" | "createdAt";
+
+export interface SecretFilter {
+  id: string;
+  field: FilterField;
+  value: string;
+}
 
 export interface SecretListItem {
   name: string;
@@ -20,12 +29,30 @@ export interface SecretDetail {
   stringData: Record<string, string>;
 }
 
+export interface SecretEvent {
+  type: string;
+  reason: string;
+  message: string;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+  source: string;
+}
+
 export interface NamespaceResponse {
   namespaces: string[];
 }
 
 export interface SecretListResponse {
   items: SecretListItem[];
+}
+
+export interface SecretEventsResponse {
+  items: SecretEvent[];
+}
+
+export interface SecretYAMLResponse {
+  yaml: string;
 }
 
 export interface SecretUpsertRequest {
@@ -39,8 +66,15 @@ export interface SecretUpsertRequest {
 export interface AppState {
   namespace: string;
   secrets: SecretListItem[];
-  filter: string;
   loading: boolean;
+  filterField: FilterField;
+  filterValue: string;
+  filters: SecretFilter[];
+  view: PageView;
+  detailTab: DetailTab;
   mode: EditorMode;
   activeSecret: string;
+  detail: SecretDetail | null;
+  events: SecretEvent[];
+  yaml: string;
 }

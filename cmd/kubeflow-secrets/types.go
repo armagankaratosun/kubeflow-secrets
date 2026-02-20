@@ -37,6 +37,24 @@ type secretDetailResponse struct {
 	StringData        map[string]string `json:"stringData"`
 }
 
+type secretYAMLResponse struct {
+	YAML string `json:"yaml"`
+}
+
+type secretEventItem struct {
+	Type      string    `json:"type"`
+	Reason    string    `json:"reason"`
+	Message   string    `json:"message"`
+	Count     int32     `json:"count"`
+	FirstSeen time.Time `json:"firstSeen"`
+	LastSeen  time.Time `json:"lastSeen"`
+	Source    string    `json:"source"`
+}
+
+type secretEventsResponse struct {
+	Items []secretEventItem `json:"items"`
+}
+
 type secretUpsertRequest struct {
 	Namespace   string            `json:"namespace"`
 	Name        string            `json:"name"`

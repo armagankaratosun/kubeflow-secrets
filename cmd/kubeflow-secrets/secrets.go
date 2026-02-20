@@ -104,8 +104,8 @@ func secretToDetail(secret *corev1.Secret) secretDetailResponse {
 		Namespace:         secret.Namespace,
 		Type:              secret.Type,
 		CreationTimestamp: secret.CreationTimestamp.Time,
-		Labels:            copyStringMap(secret.Labels),
-		Annotations:       copyStringMap(secret.Annotations),
+		Labels:            copyStringMapOrEmpty(secret.Labels),
+		Annotations:       copyStringMapOrEmpty(secret.Annotations),
 		Data:              data,
 		StringData:        stringData,
 	}
@@ -160,6 +160,13 @@ func copyStringMap(in map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+func copyStringMapOrEmpty(in map[string]string) map[string]string {
+	if in == nil {
+		return map[string]string{}
+	}
+	return copyStringMap(in)
 }
 
 func ensureManagedLabels(in map[string]string) map[string]string {

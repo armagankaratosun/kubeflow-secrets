@@ -68,15 +68,43 @@ function clearElement(el: HTMLElement): void {
   }
 }
 
-function mapToLines(obj: Record<string, string>): string {
-  const keys = Object.keys(obj);
+function normalizeMap(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const out: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw === "string") {
+      out[key] = raw;
+    }
+  }
+  return out;
+}
+
+function mapToLines(obj: unknown): string {
+  const normalized = normalizeMap(obj);
+  const keys = Object.keys(normalized);
   if (!keys.length) {
     return "-";
   }
   return keys
     .sort((left, right) => left.localeCompare(right))
-    .map((key) => `${key}: ${obj[key] ?? ""}`)
+    .map((key) => `${key}: ${normalized[key] ?? ""}`)
     .join("\n");
+}
+
+function detailManagedLabel(detail: SecretDetail): string {
+  const labels = normalizeMap(detail.labels);
+  return labels["managed-by"] ?? "-";
+}
+
+function detailKeys(value: unknown): string {
+  const keys = Object.keys(normalizeMap(value)).sort();
+  if (!keys.length) {
+    return "-";
+  }
+  return keys.join(", ");
 }
 
 function buildFilterID(): string {
@@ -360,9 +388,9 @@ function renderOverview(detail: SecretDetail): void {
     ["Namespace", detail.namespace],
     ["Type", detail.type],
     ["Created at", formatDate(detail.creationTimestamp)],
-    ["Managed label", detail.labels["managed-by"] ?? "-"],
-    ["String data keys", Object.keys(detail.stringData).sort().join(", ") || "-"],
-    ["Data keys", Object.keys(detail.data).sort().join(", ") || "-"],
+    ["Managed label", detailManagedLabel(detail)],
+    ["String data keys", detailKeys(detail.stringData)],
+    ["Data keys", detailKeys(detail.data)],
     ["Labels", mapToLines(detail.labels)],
     ["Annotations", mapToLines(detail.annotations)],
   ];

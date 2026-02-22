@@ -428,7 +428,12 @@ export class AppComponent implements OnInit {
       throw new Error('No namespace resolved for current user.');
     }
 
-    const namespace = namespaces[0];
+    const params = new URLSearchParams(window.location.search);
+    const requestedNamespace = params.get('namespace') ?? params.get('ns');
+    const namespace =
+      requestedNamespace && namespaces.includes(requestedNamespace)
+        ? requestedNamespace
+        : namespaces[0];
     if (!namespace) {
       throw new Error('No namespace resolved for current user.');
     }

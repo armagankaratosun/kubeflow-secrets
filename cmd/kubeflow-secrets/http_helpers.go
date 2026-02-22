@@ -58,9 +58,6 @@ func mapNamespaceResolutionError(err error) (int, string) {
 	if errors.Is(err, errProfileNotFound) {
 		return http.StatusForbidden, "no kubeflow profile found for user"
 	}
-	if errors.Is(err, errMultipleProfile) {
-		return http.StatusConflict, "multiple kubeflow profiles found for user"
-	}
 	return mapKubeError(err, "failed to resolve user namespace")
 }
 

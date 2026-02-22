@@ -15,10 +15,10 @@ import (
 
 const maxOwnerNamesInLog = 10
 
-func (s *server) resolveUserNamespace(ctx context.Context, user string) (string, error) {
+func (s *server) resolveUserNamespaces(ctx context.Context, user string) ([]string, error) {
 	profiles, err := s.adminDynamic.Resource(s.profileGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	userCandidates := identityCandidates(user)
@@ -32,7 +32,7 @@ func (s *server) resolveUserNamespace(ctx context.Context, user string) (string,
 
 		ownerName, found, err := unstructured.NestedString(profile.Object, "spec", "owner", "name")
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if !found {
 			continue
@@ -46,16 +46,11 @@ func (s *server) resolveUserNamespace(ctx context.Context, user string) (string,
 
 	if len(owned) == 0 {
 		logSafef("profile match failed: user=%q candidates=%q profile_owners=%q", sanitizeForLog(user), strings.Join(userCandidates, ","), strings.Join(limitStrings(ownerNames, maxOwnerNamesInLog), ","))
-		return "", errProfileNotFound
+		return nil, errProfileNotFound
 	}
 
-	if len(owned) > 1 {
-		sort.Strings(owned)
-		logSafef("profile match ambiguous: user=%q namespaces=%q", sanitizeForLog(user), strings.Join(owned, ","))
-		return "", fmt.Errorf("%w: %s", errMultipleProfile, strings.Join(owned, ","))
-	}
-
-	return owned[0], nil
+	sort.Strings(owned)
+	return owned, nil
 }
 
 func (s *server) identityFromRequest(r *http.Request) (string, []string, error) {

@@ -22,7 +22,6 @@ const (
 
 var (
 	errProfileNotFound  = errors.New("no profile namespace found for user")
-	errMultipleProfile  = errors.New("multiple profile namespaces found for user")
 	errSecretNotManaged = errors.New("secret is not managed by kubeflow-secrets")
 )
 

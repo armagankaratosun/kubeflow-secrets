@@ -69,7 +69,7 @@ func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ns, err := s.resolveUserNamespace(r.Context(), user)
+	namespaces, err := s.resolveUserNamespaces(r.Context(), user)
 	if err != nil {
 		logSafef("namespace resolution failed: user=%q err=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)
@@ -77,8 +77,8 @@ func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logSafef("namespace resolved: user=%q namespace=%q", sanitizeForLog(user), ns)
-	writeJSON(w, http.StatusOK, namespaceResponse{Namespaces: []string{ns}})
+	logSafef("namespace resolved: user=%q namespaces=%q", sanitizeForLog(user), strings.Join(namespaces, ","))
+	writeJSON(w, http.StatusOK, namespaceResponse{Namespaces: namespaces})
 }
 
 func (s *server) handleSecrets(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +153,7 @@ func (s *server) userContext(w http.ResponseWriter, r *http.Request) (string, ku
 		return "", nil, false
 	}
 
-	userNamespace, err := s.resolveUserNamespace(r.Context(), user)
+	userNamespaces, err := s.resolveUserNamespaces(r.Context(), user)
 	if err != nil {
 		logSafef("request failed: user=%q namespace resolution error=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)
@@ -161,7 +161,43 @@ func (s *server) userContext(w http.ResponseWriter, r *http.Request) (string, ku
 		return "", nil, false
 	}
 
+	userNamespace, ok := resolveNamespaceFromRequest(r, userNamespaces)
+	if !ok {
+		reqNamespace := requestedNamespace(r)
+		logSafef("request failed: user=%q namespace=%q allowed_namespaces=%q", sanitizeForLog(user), reqNamespace, strings.Join(userNamespaces, ","))
+		writeError(w, http.StatusForbidden, "requested namespace is not owned by current user")
+		return "", nil, false
+	}
+
 	return userNamespace, impClient, true
+}
+
+func resolveNamespaceFromRequest(r *http.Request, allowedNamespaces []string) (string, bool) {
+	if len(allowedNamespaces) == 0 {
+		return "", false
+	}
+
+	requested := requestedNamespace(r)
+	if requested == "" {
+		return allowedNamespaces[0], true
+	}
+
+	for _, namespace := range allowedNamespaces {
+		if namespace == requested {
+			return namespace, true
+		}
+	}
+
+	return "", false
+}
+
+func requestedNamespace(r *http.Request) string {
+	return firstNonEmpty(
+		strings.TrimSpace(r.URL.Query().Get("namespace")),
+		strings.TrimSpace(r.URL.Query().Get("ns")),
+		strings.TrimSpace(r.Header.Get("x-kubeflow-namespace")),
+		strings.TrimSpace(r.Header.Get("kubeflow-namespace")),
+	)
 }
 
 func (s *server) handleSecretsList(w http.ResponseWriter, r *http.Request, impClient kubernetes.Interface, userNamespace string) {

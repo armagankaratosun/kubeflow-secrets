@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, inject } from '@angular/core';
+import { Component, HostListener, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,6 +7,16 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatTabsModule } from '@angular/material/tabs';
 
 import { SecretsAPIService } from './secrets-api.service';
+import { NamespaceSyncService } from './namespace-sync.service';
+import {
+  buildFilterID,
+  detailManagedByLabel,
+  parseJSONStringMap,
+  prettyJSON,
+  resolveErrorMessage,
+  stringMapKeys,
+  stringMapToLines,
+} from './secret-utils';
 import type {
   DetailTab,
   EditorMode,
@@ -42,7 +52,7 @@ interface FilterFieldOption {
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
-export class AppComponent implements OnInit {
+export class AppComponent implements OnInit, OnDestroy {
   namespace = '';
   secrets: SecretListItem[] = [];
   loading = false;
@@ -83,9 +93,18 @@ export class AppComponent implements OnInit {
   ];
 
   private readonly api = inject(SecretsAPIService);
+  private readonly namespaceSync = inject(NamespaceSyncService);
+
+  private availableNamespaces: string[] = [];
+  private namespaceSwitchInProgress = false;
 
   ngOnInit(): void {
+    this.namespaceSync.start((namespace) => this.applyExternalNamespaceSelection(namespace));
     void this.bootstrap();
+  }
+
+  ngOnDestroy(): void {
+    this.namespaceSync.stop();
   }
 
   @HostListener('document:keydown.escape')
@@ -106,6 +125,7 @@ export class AppComponent implements OnInit {
     if (!this.filters.length) {
       return this.secrets;
     }
+
     return this.secrets.filter((secret) =>
       this.filters.every((filter) => this.matchesFilter(secret, filter)),
     );
@@ -138,11 +158,11 @@ export class AppComponent implements OnInit {
       { label: 'Namespace', value: this.detail.namespace },
       { label: 'Type', value: this.detail.type },
       { label: 'Created at', value: this.formatDate(this.detail.creationTimestamp) },
-      { label: 'Managed label', value: this.detailManagedLabel(this.detail) },
-      { label: 'String data keys', value: this.detailKeys(this.detail.stringData) },
-      { label: 'Data keys', value: this.detailKeys(this.detail.data) },
-      { label: 'Labels', value: this.mapToLines(this.detail.labels) },
-      { label: 'Annotations', value: this.mapToLines(this.detail.annotations) },
+      { label: 'Managed label', value: detailManagedByLabel(this.detail) },
+      { label: 'String data keys', value: stringMapKeys(this.detail.stringData) },
+      { label: 'Data keys', value: stringMapKeys(this.detail.data) },
+      { label: 'Labels', value: stringMapToLines(this.detail.labels) },
+      { label: 'Annotations', value: stringMapToLines(this.detail.annotations) },
     ];
   }
 
@@ -197,7 +217,7 @@ export class AppComponent implements OnInit {
     }
 
     this.filters.push({
-      id: this.buildFilterID(),
+      id: buildFilterID(),
       field: this.filterField,
       value,
     });
@@ -271,11 +291,11 @@ export class AppComponent implements OnInit {
       this.editorSubtitle = 'Update values for this managed secret.';
       this.editorName = detail.name || '';
       this.editorType = detail.type || 'Opaque';
-      this.editorStringData = this.prettyJSON(detail.stringData);
-      this.editorData = this.prettyJSON(detail.data);
+      this.editorStringData = prettyJSON(detail.stringData);
+      this.editorData = prettyJSON(detail.data);
       this.editorOpen = true;
     } catch (error: unknown) {
-      this.setStatus(`Failed to load secret ${name}: ${this.errorMessage(error)}`, true);
+      this.setStatus(`Failed to load secret ${name}: ${resolveErrorMessage(error)}`, true);
     } finally {
       this.setLoading(false);
     }
@@ -318,10 +338,10 @@ export class AppComponent implements OnInit {
     let stringData: Record<string, string>;
     let data: Record<string, string>;
     try {
-      stringData = this.parseStringObject(this.editorStringData || '{}', 'String Data');
-      data = this.parseStringObject(this.editorData || '{}', 'Data');
+      stringData = parseJSONStringMap(this.editorStringData || '{}', 'String Data');
+      data = parseJSONStringMap(this.editorData || '{}', 'Data');
     } catch (error: unknown) {
-      this.editorError = this.errorMessage(error);
+      this.editorError = resolveErrorMessage(error);
       return;
     }
 
@@ -357,7 +377,7 @@ export class AppComponent implements OnInit {
         await this.loadSecretDetails(name);
       }
     } catch (error: unknown) {
-      const message = this.errorMessage(error);
+      const message = resolveErrorMessage(error);
       this.editorError = message;
       this.setStatus(`Failed to save secret ${name}: ${message}`, true);
     } finally {
@@ -385,7 +405,7 @@ export class AppComponent implements OnInit {
       await this.loadSecrets();
       this.setStatus(`Secret ${name} deleted from ${this.namespace}.`);
     } catch (error: unknown) {
-      const message = this.errorMessage(error);
+      const message = resolveErrorMessage(error);
       this.deleteError = message;
       this.setStatus(`Failed to delete secret ${name}: ${message}`, true);
     } finally {
@@ -418,7 +438,7 @@ export class AppComponent implements OnInit {
       await this.loadNamespace();
       await this.loadSecrets();
     } catch (error: unknown) {
-      this.setStatus(this.errorMessage(error), true);
+      this.setStatus(resolveErrorMessage(error), true);
     }
   }
 
@@ -428,17 +448,20 @@ export class AppComponent implements OnInit {
       throw new Error('No namespace resolved for current user.');
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const requestedNamespace = params.get('namespace') ?? params.get('ns');
+    this.availableNamespaces = namespaces;
+
+    const requestedNamespace = this.namespaceSync.currentNamespaceFromURL();
     const namespace =
       requestedNamespace && namespaces.includes(requestedNamespace)
         ? requestedNamespace
         : namespaces[0];
+
     if (!namespace) {
       throw new Error('No namespace resolved for current user.');
     }
 
     this.namespace = namespace;
+    this.namespaceSync.setCurrentNamespace(namespace);
   }
 
   private async loadSecrets(): Promise<void> {
@@ -454,7 +477,7 @@ export class AppComponent implements OnInit {
       this.setStatus(`Loaded ${this.secrets.length} managed secret(s) from ${this.namespace}.`);
     } catch (error: unknown) {
       this.secrets = [];
-      this.setStatus(`Failed to load secrets: ${this.errorMessage(error)}`, true);
+      this.setStatus(`Failed to load secrets: ${resolveErrorMessage(error)}`, true);
     } finally {
       this.setLoading(false);
     }
@@ -488,7 +511,7 @@ export class AppComponent implements OnInit {
       };
       this.events = [];
       this.yaml = '# Failed to load YAML';
-      this.setDetailStatus(`Failed to load details: ${this.errorMessage(error)}`, true);
+      this.setDetailStatus(`Failed to load details: ${resolveErrorMessage(error)}`, true);
     } finally {
       this.setLoading(false);
     }
@@ -515,85 +538,43 @@ export class AppComponent implements OnInit {
     }
   }
 
-  private parseStringObject(raw: string, fieldName: string): Record<string, string> {
-    let parsed: unknown;
+  private async applyExternalNamespaceSelection(namespace: string): Promise<void> {
+    const targetNamespace = namespace.trim();
+    if (!targetNamespace || targetNamespace === this.namespace || this.namespaceSwitchInProgress) {
+      return;
+    }
+
+    this.namespaceSwitchInProgress = true;
     try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error(`${fieldName} must be valid JSON.`);
-    }
+      const namespaces =
+        this.availableNamespaces.length > 0
+          ? this.availableNamespaces
+          : await this.api.getNamespaces();
+      this.availableNamespaces = namespaces;
 
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
-      throw new Error(`${fieldName} must be a JSON object.`);
-    }
-
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-      if (!key.trim()) {
-        throw new Error(`${fieldName} contains an empty key.`);
+      if (!namespaces.includes(targetNamespace)) {
+        this.setStatus(`Namespace ${targetNamespace} is not available for current user.`, true);
+        return;
       }
-      if (typeof value !== 'string') {
-        throw new Error(`${fieldName} values must be strings.`);
+
+      this.namespace = targetNamespace;
+      this.namespaceSync.setCurrentNamespace(targetNamespace);
+      this.filters = [];
+
+      if (this.view === 'detail') {
+        this.backToList();
+        this.activeSecret = '';
+        this.detail = null;
+        this.events = [];
+        this.yaml = '';
+        this.setDetailStatus('');
       }
-      out[key] = value;
-    }
-    return out;
-  }
 
-  private normalizeMap(value: unknown): Record<string, string> {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-      return {};
+      await this.loadSecrets();
+    } catch (error: unknown) {
+      this.setStatus(`Failed to switch namespace: ${resolveErrorMessage(error)}`, true);
+    } finally {
+      this.namespaceSwitchInProgress = false;
     }
-
-    const out: Record<string, string> = {};
-    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-      if (typeof raw === 'string') {
-        out[key] = raw;
-      }
-    }
-    return out;
-  }
-
-  private mapToLines(obj: unknown): string {
-    const normalized = this.normalizeMap(obj);
-    const keys = Object.keys(normalized).sort((left, right) => left.localeCompare(right));
-    if (!keys.length) {
-      return '-';
-    }
-    return keys.map((key) => `${key}: ${normalized[key] ?? ''}`).join('\n');
-  }
-
-  private detailManagedLabel(detail: SecretDetail): string {
-    const labels = this.normalizeMap(detail.labels);
-    return labels['managed-by'] ?? '-';
-  }
-
-  private detailKeys(value: unknown): string {
-    const keys = Object.keys(this.normalizeMap(value)).sort();
-    if (!keys.length) {
-      return '-';
-    }
-    return keys.join(', ');
-  }
-
-  private prettyJSON(value: unknown, fallback = '{}'): string {
-    if (!value || typeof value !== 'object') {
-      return fallback;
-    }
-    return JSON.stringify(value, null, 2);
-  }
-
-  private buildFilterID(): string {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
-    }
-    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  }
-
-  private errorMessage(error: unknown): string {
-    if (error instanceof Error) {
-      return error.message;
-    }
-    return 'Unknown error';
   }
 }

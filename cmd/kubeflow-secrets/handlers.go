@@ -62,14 +62,14 @@ func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, _, err := s.identityFromRequest(r)
+	user, groups, err := s.identityFromRequest(r)
 	if err != nil {
 		logSafef("namespace resolution failed: identity error: %v", err)
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	namespaces, err := s.resolveUserNamespaces(r.Context(), user)
+	namespaces, err := s.resolveUserNamespaces(r.Context(), user, groups)
 	if err != nil {
 		logSafef("namespace resolution failed: user=%q err=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)
@@ -153,7 +153,7 @@ func (s *server) userContext(w http.ResponseWriter, r *http.Request) (string, ku
 		return "", nil, false
 	}
 
-	userNamespaces, err := s.resolveUserNamespaces(r.Context(), user)
+	userNamespaces, err := s.resolveUserNamespaces(r.Context(), user, groups)
 	if err != nil {
 		logSafef("request failed: user=%q namespace resolution error=%v", sanitizeForLog(user), err)
 		status, msg := mapNamespaceResolutionError(err)

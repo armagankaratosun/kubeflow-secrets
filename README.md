@@ -33,8 +33,10 @@ Kubeflow is licensed under Apache License 2.0, and this repository preserves Apa
   - `PUT /api/secrets/{name}`
   - `DELETE /api/secrets/{name}`
 - Only returns secrets created/managed by this app (`managed-by=kubeflow-secrets`).
-- Enforces single-namespace behavior from Profile ownership:
-  - namespace is derived from `Profile.spec.owner.name == kubeflow-userid`
+- Enforces profile-scoped namespace access:
+  - namespace is included when either:
+    - `Profile.spec.owner.name == kubeflow-userid`, or
+    - the impersonated user can list secrets in that Profile namespace (for example via contributor RBAC)
   - cross-namespace requests are rejected
 - Validates secret payload and blocks sensitive types (for example `kubernetes.io/service-account-token`).
 - Relies on RBAC for final authorization.

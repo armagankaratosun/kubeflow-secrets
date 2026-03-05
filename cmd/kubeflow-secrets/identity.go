@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/client-go/kubernetes"
@@ -15,8 +16,13 @@ import (
 
 const maxOwnerNamesInLog = 10
 
-func (s *server) resolveUserNamespaces(ctx context.Context, user string) ([]string, error) {
+func (s *server) resolveUserNamespaces(ctx context.Context, user string, groups []string) ([]string, error) {
 	profiles, err := s.adminDynamic.Resource(s.profileGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	impClient, err := s.newImpersonatedClient(user, groups)
 	if err != nil {
 		return nil, err
 	}
@@ -41,6 +47,15 @@ func (s *server) resolveUserNamespaces(ctx context.Context, user string) ([]stri
 		ownerNames = append(ownerNames, ownerName)
 		if identitiesMatch(userCandidates, identityCandidates(ownerName)) {
 			owned = append(owned, namespace)
+			continue
+		}
+
+		allowed, err := canListManagedSecrets(ctx, impClient, namespace)
+		if err != nil {
+			return nil, err
+		}
+		if allowed {
+			owned = append(owned, namespace)
 		}
 	}
 
@@ -51,6 +66,22 @@ func (s *server) resolveUserNamespaces(ctx context.Context, user string) ([]stri
 
 	sort.Strings(owned)
 	return owned, nil
+}
+
+func canListManagedSecrets(ctx context.Context, impClient kubernetes.Interface, namespace string) (bool, error) {
+	_, err := impClient.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{
+		Limit:         1,
+		LabelSelector: managedLabelSelector(),
+	})
+	if err == nil {
+		return true, nil
+	}
+
+	if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) {
+		return false, nil
+	}
+
+	return false, err
 }
 
 func (s *server) identityFromRequest(r *http.Request) (string, []string, error) {
